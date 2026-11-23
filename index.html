@@ -337,6 +337,80 @@ tbody tr:hover td { background: var(--head-bg); }
 /* Live scores */
 .live-view { display: grid; gap: 16px; }
 .live-cards { align-items: start; }
+.live-card { cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.live-card:hover { border-color: var(--muted); }
+.live-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.live-card .open-hint { padding: 0 14px 10px; font-size: 12px; color: var(--muted); }
+
+/* Box score popup */
+#game-dialog {
+  width: min(1000px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--fg);
+  overflow: hidden;
+}
+#game-dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
+.gd { display: grid; grid-template-rows: auto 1fr; max-height: calc(100dvh - 26px); }
+.gd-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--head-bg);
+}
+.gd-close {
+  font: 600 16px var(--font-body);
+  width: 34px; height: 34px; flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+.gd-close:hover { background: var(--bg); }
+.gd-score { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.gd-score .tm { display: flex; align-items: center; gap: 8px; }
+.gd-score .logo { width: 34px; height: 34px; }
+.gd-score .abbr { font: 700 20px/1 var(--font-display); }
+.gd-score .pts { font: 700 30px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.gd-score .pts.trailing { color: var(--muted); }
+.gd-score .dash { color: var(--muted); }
+.gd-state { font: 600 13px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.gd-state.live { color: var(--live); }
+.gd-body { overflow: auto; padding: 14px 16px 18px; display: grid; gap: 22px; }
+.gd-body > * { min-width: 0; }
+.gd-team { display: grid; gap: 8px; }
+.gd-team h3 { margin: 0; display: flex; align-items: center; gap: 8px; font: 700 18px var(--font-display); }
+.gd-team h3 .logo { width: 24px; height: 24px; }
+.box-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.box { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; font-size: 14px; }
+.box th, .box td { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: static; }
+.box th { font: 600 12px var(--font-display); letter-spacing: 0.06em; color: var(--muted); background: var(--head-bg); }
+.box th:first-child, .box td:first-child { text-align: left; position: sticky; left: 0; z-index: 1; padding-left: 10px; }
+.box th:first-child { z-index: 2; }
+.box tr.section td { font: 600 11px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding-block: 4px; }
+.box tr.totals td { font-weight: 700; background: var(--head-bg); border-bottom: 0; }
+.box td.pts { font-weight: 700; }
+.box td.dim { color: var(--muted); }
+.box .bp { display: flex; align-items: center; gap: 8px; }
+.box .bp .shot { width: 28px; height: 28px; }
+.box .bp .pos { color: var(--muted); font-size: 12px; }
+.dnp { font-size: 13px; color: var(--muted); }
+.gd-msg { color: var(--muted); text-align: center; padding: 24px 8px; }
+@media (max-width: 480px) {
+  .gd-score { flex-wrap: nowrap; gap: 8px; }
+  .gd-score .tm { gap: 5px; }
+  .gd-score .logo { width: 26px; height: 26px; }
+  .gd-score .abbr { font-size: 17px; }
+  .gd-score .pts { font-size: 24px; }
+  .gd-head, .gd-body { padding-inline: 12px; }
+}
 .live-view > * { min-width: 0; }
 .live-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .live-status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
@@ -616,6 +690,16 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <div class="cards live-cards" id="live-cards"></div>
     </div>
   </section>
+
+  <dialog id="game-dialog" aria-labelledby="gd-title">
+    <div class="gd">
+      <div class="gd-head">
+        <div class="gd-title" id="gd-title"></div>
+        <button type="button" class="gd-close" id="gd-close" aria-label="Close box score">✕</button>
+      </div>
+      <div class="gd-body" id="gd-body"></div>
+    </div>
+  </dialog>
 
   <div class="notes" id="notes-live" hidden>
     <p>Scores come straight from ESPN and refresh every 30 seconds while this view is open (it pauses when the tab is in the background). Times are in your local time zone.</p>
@@ -1261,13 +1345,13 @@ function renderLive() {
       return `<div><span class="lt">${esc(t.abbr)} leaders</span>${item("PTS", "points")}${item("REB", "rebounds")}${item("AST", "assists")}</div>`;
     };
 
-    return `<article class="card live-card${g.state === "in" ? " is-live" : ""}">
+    return `<article class="card live-card${g.state === "in" ? " is-live" : ""}" data-gid="${esc(g.id)}" tabindex="0" role="button" aria-label="${esc(g.away.abbr)} at ${esc(g.home.abbr)}: open box score">
       <div class="card-time">${state}<span>${right}</span></div>
       <table class="score-table">
         ${started ? `<thead><tr><th></th>${Array.from({ length: nper }, (_, i) => `<th>${perLabel(i)}</th>`).join("")}<th>T</th></tr></thead>` : ""}
         <tbody>${row(g.away, awayScore < homeScore)}${row(g.home, homeScore < awayScore)}</tbody>
       </table>
-      ${started ? `<div class="leaders">${leaderCol(g.away)}${leaderCol(g.home)}</div>` : ""}
+      ${started ? `<div class="leaders">${leaderCol(g.away)}${leaderCol(g.home)}</div><div class="open-hint">Box score ›</div>` : ""}
     </article>`;
   }).join("");
 }
@@ -1279,6 +1363,157 @@ document.getElementById("live-days").addEventListener("click", e => {
   renderLive();
 });
 document.getElementById("live-refresh").addEventListener("click", () => { if (!live.loading) fetchLive(); });
+
+/* ---------- box score popup ---------- */
+const SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary";
+const BOX_COLS = [
+  { key: "min", label: "MIN" },
+  { key: "efg", label: "eFG%" },
+  { key: "pts", label: "PTS" },
+  { key: "reb", label: "REB" },
+  { key: "oreb", label: "OREB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "blk", label: "BLK" },
+  { key: "tov", label: "TOV" },
+];
+const box = { gameId: null, timer: null };
+
+function parseBox(json) {
+  const header = json.header?.competitions?.[0] || {};
+  const st = header.status?.type || {};
+  const sides = Object.fromEntries((header.competitors || []).map(c => [c.homeAway, {
+    abbr: c.team?.abbreviation, score: c.score, record: c.record?.[0]?.summary || c.records?.[0]?.summary || "",
+  }]));
+  const teams = (json.boxscore?.players || []).map(block => {
+    const table = block.statistics?.[0] || {};
+    const idx = Object.fromEntries((table.labels || table.names || []).map((l, i) => [l, i]));
+    const num = (stats, l) => { const v = parseInt(stats[idx[l]], 10); return Number.isFinite(v) ? v : 0; };
+    const pair = (stats, l) => { const [m, a] = String(stats[idx[l]] ?? "0-0").split("-").map(n => parseInt(n, 10) || 0); return [m, a]; };
+    const played = [], dnp = [];
+    for (const a of table.athletes || []) {
+      const ath = a.athlete || {};
+      const who = { id: ath.id, name: ath.displayName || ath.shortName || "", short: ath.shortName || ath.displayName || "", pos: ath.position?.abbreviation || "", starter: !!a.starter };
+      const stats = a.stats || [];
+      if (a.didNotPlay || !stats.length) { dnp.push({ ...who, reason: a.reason || "" }); continue; }
+      const [fgm, fga] = pair(stats, "FG"), [tpm, tpa] = pair(stats, "3PT");
+      played.push({ ...who, min: num(stats, "MIN"), pts: num(stats, "PTS"), reb: num(stats, "REB"), oreb: num(stats, "OREB"),
+        ast: num(stats, "AST"), stl: num(stats, "STL"), blk: num(stats, "BLK"), tov: num(stats, "TO"), fgm, fga, tpm, tpa });
+    }
+    return { abbr: block.team?.abbreviation, played, dnp };
+  });
+  return { state: st.state, detail: st.shortDetail || st.detail || "", start: header.date, sides, teams };
+}
+
+function boxRow(p, cls = "") {
+  const efg = efgOf(p);
+  return `<tr class="${cls}">
+    <td>${cls === "totals" ? "Team totals" : `<div class="bp">${headshot(p.id, p.name)}<span>${esc(p.short)}</span><span class="pos">${esc(p.pos)}</span></div>`}</td>
+    ${BOX_COLS.map(c => c.key === "efg"
+      ? `<td class="${efg == null ? "dim" : ""}" title="${p.fgm}-${p.fga} FG, ${p.tpm}-${p.tpa} 3PT">${efg == null ? "—" : efg.toFixed(1) + "%"}</td>`
+      : `<td class="${c.key === "pts" ? "pts" : ""}">${p[c.key]}</td>`).join("")}
+  </tr>`;
+}
+
+function teamBox(t) {
+  const info = teamInfo(t.abbr);
+  const starters = t.played.filter(p => p.starter);
+  const bench = t.played.filter(p => !p.starter);
+  const tot = { fgm: 0, fga: 0, tpm: 0, tpa: 0 };
+  for (const c of BOX_COLS) if (c.key !== "efg") tot[c.key] = 0;
+  for (const p of t.played) for (const k in tot) tot[k] += p[k];
+  const cols = BOX_COLS.length + 1;
+  return `<section class="gd-team">
+    <h3>${logo(t.abbr)}${esc(info.name || t.abbr)}</h3>
+    <div class="box-wrap"><table class="box">
+      <thead><tr><th>Player</th>${BOX_COLS.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${starters.length ? `<tr class="section"><td colspan="${cols}">Starters</td></tr>${starters.map(p => boxRow(p)).join("")}` : ""}
+        ${bench.length ? `<tr class="section"><td colspan="${cols}">Bench</td></tr>${bench.map(p => boxRow(p)).join("")}` : ""}
+        ${boxRow(tot, "totals")}
+      </tbody>
+    </table></div>
+    ${t.dnp.length ? `<div class="dnp">Did not play: ${t.dnp.map(p => `${esc(p.short)}${p.reason ? ` (${esc(p.reason.toLowerCase())})` : ""}`).join(", ")}</div>` : ""}
+  </section>`;
+}
+
+function renderBox(data) {
+  const title = document.getElementById("gd-title");
+  const body = document.getElementById("gd-body");
+  const { away, home } = data.sides;
+  const started = data.state !== "pre";
+  const a = Number(away?.score), h = Number(home?.score);
+  const side = (t, trailing) => `<span class="tm">${logo(t.abbr)}<span class="abbr">${esc(t.abbr)}</span>${started ? `<span class="pts${trailing ? " trailing" : ""}">${esc(t.score)}</span>` : ""}</span>`;
+  const stateText = data.state === "in"
+    ? `<div class="gd-state live"><span class="dot" aria-hidden="true"></span>${esc(data.detail)} · updates every 30 seconds</div>`
+    : data.state === "pre"
+      ? `<div class="gd-state">Tips off ${new Date(data.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</div>`
+      : `<div class="gd-state">${esc(data.detail || "Final")}</div>`;
+  title.innerHTML = away && home
+    ? `<div class="gd-score">${side(away, started && a < h)}<span class="dash">@</span>${side(home, started && h < a)}</div>${stateText}`
+    : "Box score";
+
+  if (!started || !data.teams.some(t => t.played.length)) {
+    body.innerHTML = `<div class="gd-msg">The box score appears once the game tips off.</div>`;
+    return;
+  }
+  // Away team first, like the score line.
+  const order = [away?.abbr, home?.abbr];
+  const teams = [...data.teams].sort((x, y) => order.indexOf(x.abbr) - order.indexOf(y.abbr));
+  body.innerHTML = teams.map(teamBox).join("");
+}
+
+function loadBox(gameId, quiet) {
+  if (!quiet) {
+    document.getElementById("gd-title").textContent = "Loading box score…";
+    document.getElementById("gd-body").innerHTML = "";
+  }
+  return fetch(`${SUMMARY_URL}?event=${encodeURIComponent(gameId)}`, { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(json => {
+      if (box.gameId !== gameId) return; // closed or switched games meanwhile
+      const data = parseBox(json);
+      renderBox(data);
+      clearInterval(box.timer);
+      box.timer = data.state === "in" ? setInterval(() => { if (!document.hidden) loadBox(gameId, true); }, LIVE_REFRESH_MS) : null;
+    })
+    .catch(() => {
+      if (box.gameId !== gameId || quiet) return;
+      document.getElementById("gd-title").textContent = "Box score";
+      document.getElementById("gd-body").innerHTML = `<div class="gd-msg">Couldn't load the box score from ESPN. Close this and try again in a moment.</div>`;
+    });
+}
+
+const dialog = document.getElementById("game-dialog");
+function openBox(gameId) {
+  box.gameId = gameId;
+  if (!dialog.open) dialog.showModal();
+  loadBox(gameId);
+}
+function closeBox() {
+  box.gameId = null;
+  clearInterval(box.timer);
+  if (dialog.open) dialog.close();
+}
+document.getElementById("live-cards").addEventListener("click", e => {
+  const card = e.target.closest(".live-card[data-gid]");
+  if (card) openBox(card.dataset.gid);
+});
+document.getElementById("live-cards").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const card = e.target.closest(".live-card[data-gid]");
+  if (card) { e.preventDefault(); openBox(card.dataset.gid); }
+});
+document.getElementById("gd-close").addEventListener("click", closeBox);
+dialog.addEventListener("close", () => { box.gameId = null; clearInterval(box.timer); });
+// Clicking the dimmed area outside the popup closes it.
+dialog.addEventListener("click", e => { if (e.target === dialog) closeBox(); });
+// Players without an ESPN photo get their initials.
+document.getElementById("gd-body").addEventListener("error", e => {
+  if (e.target.tagName !== "IMG") return;
+  e.target.parentNode.classList.add("noimg");
+  e.target.remove();
+}, true);
 // Refresh today's scores every 30 seconds while the Live view is on screen.
 setInterval(() => {
   if (state.view === "live" && live.day === 0 && !document.hidden && !live.loading) fetchLive();
