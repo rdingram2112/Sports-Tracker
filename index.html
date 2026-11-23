@@ -333,6 +333,46 @@ tbody tr:hover td { background: var(--head-bg); }
 .line-strip b { font-size: 14px; font-weight: 600; white-space: nowrap; }
 .line-strip > div:last-child { text-align: right; }
 .line-strip.none { display: block; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* Live scores */
+.live-view { display: grid; gap: 16px; }
+.live-cards { align-items: start; }
+.live-view > * { min-width: 0; }
+.live-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.live-status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.live-status button {
+  font: 600 13px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.live-status button:hover { background: var(--head-bg); }
+.live-card .card-time .state { display: inline-flex; align-items: center; gap: 6px; }
+.live-card.is-live { border-color: var(--live); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) { .dot { animation: pulse 1.6s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.score-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.score-table th, .score-table td { padding: 6px 4px; text-align: center; border: 0; white-space: nowrap; position: static; background: none; }
+.score-table th { font: 600 11px var(--font-display); letter-spacing: 0.08em; color: var(--muted); }
+.score-table th:first-child, .score-table td:first-child { text-align: left; padding-left: 14px; }
+.score-table th:last-child, .score-table td:last-child { padding-right: 14px; }
+.score-table td { color: var(--muted); font-size: 13px; }
+.score-table td.total { font: 700 24px/1 var(--font-display); color: var(--fg); width: 3em; text-align: right; }
+.score-table tr.trailing td.total { color: var(--muted); }
+.score-team { display: flex; align-items: center; gap: 8px; }
+.score-team .logo { width: 30px; height: 30px; }
+.score-team .abbr { font: 700 18px/1 var(--font-display); color: var(--fg); }
+.score-team .rec { font-size: 12px; color: var(--muted); }
+.leaders { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.leaders > div { padding: 8px 14px; display: grid; gap: 2px; font-size: 13px; min-width: 0; }
+.leaders > div + div { border-left: 1px solid var(--line); }
+.leaders .lt { font: 600 11px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.leaders .ln { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leaders b { font-variant-numeric: tabular-nums; }
 .mrow {
   display: grid;
   grid-template-columns: 1fr 64px 1fr;
@@ -491,6 +531,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
         <option value="stats">Team stats</option>
         <option value="matchups">Matchups</option>
         <option value="players">Players</option>
+        <option value="live">Live scores</option>
       </select>
     </label>
   </div>
@@ -563,6 +604,23 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     </div>
   </section>
 
+  <section id="view-live" hidden>
+    <div class="live-view">
+      <div class="live-bar">
+        <div class="days" id="live-days" role="group" aria-label="Day">
+          <button type="button" data-lday="-1">Yesterday</button>
+          <button type="button" data-lday="0">Today</button>
+        </div>
+        <div class="live-status"><span id="live-updated"></span><button type="button" id="live-refresh">Refresh now</button></div>
+      </div>
+      <div class="cards live-cards" id="live-cards"></div>
+    </div>
+  </section>
+
+  <div class="notes" id="notes-live" hidden>
+    <p>Scores come straight from ESPN and refresh every 30 seconds while this view is open (it pauses when the tab is in the background). Times are in your local time zone.</p>
+  </div>
+
   <div class="notes" id="notes-players" hidden>
     <p>Time periods count back from the most recent game day: last week is the last 7 days, last 2 weeks the last 14, and last month the last 30. Per game lists only players who played in at least half of their team's games in the period, so players who have been out injured drop off; Totals lists everyone who played. Click a column to sort by it, and click again to reverse.</p>
     <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, totaled across the period, so it gives threes their extra point. When sorting by eFG%, players averaging fewer than 5 shots a game are listed after everyone else.</p>
@@ -602,7 +660,7 @@ const state = {
   pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
   pexpanded: null, pchartStat: null,
 };
-const VIEWS = ["stats", "matchups", "players"];
+const VIEWS = ["stats", "matchups", "players", "live"];
 const PSTATS = [
   { key: "min", label: "MIN" },
   { key: "efg", label: "eFG%", pct: true },
@@ -1111,6 +1169,124 @@ function niceStep(raw) {
 }
 const shortDay = day => day ? new Date(day + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 
+/* ---------- live scores (straight from ESPN in the browser) ---------- */
+const LIVE_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard";
+const LIVE_REFRESH_MS = 30000;
+const live = { day: 0, byDay: {}, loading: false, error: false, updated: null };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function liveDayKey() {
+  return shiftDay(etDay(new Date().toISOString()), live.day);
+}
+
+function parseLive(json) {
+  return (json.events || []).map(ev => {
+    const comp = ev.competitions[0];
+    const st = ev.status || comp.status;
+    const side = c => ({
+      abbr: c.team.abbreviation,
+      score: c.score,
+      periods: (c.linescores || []).map(l => l.value ?? l.displayValue),
+      record: (c.records || []).find(r => r.type === "total" || r.name === "overall")?.summary || c.records?.[0]?.summary || "",
+      leaders: Object.fromEntries((c.leaders || []).map(L => {
+        const top = L.leaders?.[0];
+        return [L.name, top ? { value: top.displayValue, name: top.athlete?.shortName || top.athlete?.displayName || "" } : null];
+      })),
+    });
+    const away = comp.competitors.find(c => c.homeAway === "away");
+    const home = comp.competitors.find(c => c.homeAway === "home");
+    const odds = comp.odds?.[0];
+    return {
+      id: ev.id,
+      start: ev.date,
+      state: st.type.state, // pre, in, post
+      detail: st.type.shortDetail || st.type.detail || "",
+      away: side(away),
+      home: side(home),
+      line: odds ? { spread: odds.details, total: odds.overUnder } : null,
+    };
+  }).sort((a, b) => {
+    const order = { in: 0, pre: 1, post: 2 };
+    return (order[a.state] ?? 3) - (order[b.state] ?? 3) || a.start.localeCompare(b.start);
+  });
+}
+
+function fetchLive() {
+  const key = liveDayKey();
+  live.loading = true;
+  return fetch(`${LIVE_URL}?dates=${key.replace(/-/g, "")}`, { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(json => { live.byDay[key] = parseLive(json); live.error = false; live.updated = new Date(); })
+    .catch(() => { live.error = true; })
+    .finally(() => { live.loading = false; if (state.view === "live") renderLive(); });
+}
+
+function renderLive() {
+  const key = liveDayKey();
+  document.querySelectorAll("#live-days button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.lday) === live.day)));
+  const games = live.byDay[key];
+  const cards = document.getElementById("live-cards");
+  const stamp = document.getElementById("live-updated");
+
+  if (!games && !live.loading) fetchLive();
+  stamp.textContent = live.error
+    ? "Couldn't reach ESPN. Trying again shortly."
+    : live.updated ? `Updated ${live.updated.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Loading…";
+
+  if (!games) { cards.innerHTML = `<div class="empty">Loading scores…</div>`; return; }
+  if (!games.length) { cards.innerHTML = `<div class="empty">No NBA games ${live.day === 0 ? "today" : "yesterday"}.</div>`; return; }
+
+  cards.innerHTML = games.map(g => {
+    const started = g.state !== "pre";
+    const nper = Math.max(4, g.away.periods.length, g.home.periods.length);
+    const perLabel = i => i < 4 ? String(i + 1) : (nper > 5 ? `OT${i - 3}` : "OT");
+    const awayScore = Number(g.away.score), homeScore = Number(g.home.score);
+
+    let state;
+    if (g.state === "in") state = `<span class="state" style="color:var(--live)"><span class="dot" aria-hidden="true"></span>${esc(g.detail)}</span>`;
+    else if (g.state === "pre") state = `<span class="state">${new Date(g.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>`;
+    else state = `<span class="state">${esc(g.detail || "Final")}</span>`;
+    const right = g.state === "pre" && g.line
+      ? [g.line.spread && esc(g.line.spread).replace(/-/g, "−"), g.line.total && `O/U ${g.line.total}`].filter(Boolean).join(" · ")
+      : `${esc(teamInfo(g.away.abbr).short || g.away.abbr)} at ${esc(teamInfo(g.home.abbr).short || g.home.abbr)}`;
+
+    const row = (t, trailing) => `<tr class="${started && trailing ? "trailing" : ""}">
+        <td><div class="score-team">${logo(t.abbr)}<div><div class="abbr">${esc(t.abbr)}</div><div class="rec">${esc(t.record)}</div></div></div></td>
+        ${started ? Array.from({ length: nper }, (_, i) => `<td>${t.periods[i] ?? ""}</td>`).join("") + `<td class="total">${esc(t.score)}</td>` : ""}
+      </tr>`;
+
+    const leaderCol = t => {
+      const L = t.leaders;
+      const item = (label, k) => L[k] ? `<div class="ln">${label} <b>${esc(L[k].value)}</b> ${esc(L[k].name)}</div>` : "";
+      return `<div><span class="lt">${esc(t.abbr)} leaders</span>${item("PTS", "points")}${item("REB", "rebounds")}${item("AST", "assists")}</div>`;
+    };
+
+    return `<article class="card live-card${g.state === "in" ? " is-live" : ""}">
+      <div class="card-time">${state}<span>${right}</span></div>
+      <table class="score-table">
+        ${started ? `<thead><tr><th></th>${Array.from({ length: nper }, (_, i) => `<th>${perLabel(i)}</th>`).join("")}<th>T</th></tr></thead>` : ""}
+        <tbody>${row(g.away, awayScore < homeScore)}${row(g.home, homeScore < awayScore)}</tbody>
+      </table>
+      ${started ? `<div class="leaders">${leaderCol(g.away)}${leaderCol(g.home)}</div>` : ""}
+    </article>`;
+  }).join("");
+}
+
+document.getElementById("live-days").addEventListener("click", e => {
+  const b = e.target.closest("button[data-lday]");
+  if (!b) return;
+  live.day = Number(b.dataset.lday);
+  renderLive();
+});
+document.getElementById("live-refresh").addEventListener("click", () => { if (!live.loading) fetchLive(); });
+// Refresh today's scores every 30 seconds while the Live view is on screen.
+setInterval(() => {
+  if (state.view === "live" && live.day === 0 && !document.hidden && !live.loading) fetchLive();
+}, LIVE_REFRESH_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.view === "live" && live.day === 0 && !live.loading) fetchLive();
+});
+
 /* ---------- shell ---------- */
 function render() {
   if (!state.data) return;
@@ -1120,12 +1296,14 @@ function render() {
     matchups: `Matchups using ${windowText}`,
     players: { 7: "Player leaders over the last week", 14: "Player leaders over the last 2 weeks", 30: "Player leaders over the last month" }[state.pspan] || "Player leaders for the full season",
   };
-  document.getElementById("game-window").hidden = state.view === "players";
+  headlines.live = "Live scores";
+  document.getElementById("game-window").hidden = state.view === "players" || state.view === "live";
   document.getElementById("headline").textContent = headlines[state.view];
   document.getElementById("view").value = state.view;
   for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = state.view !== v;
   document.getElementById("notes-players").hidden = state.view !== "players";
-  document.getElementById("notes-team").hidden = state.view === "players";
+  document.getElementById("notes-live").hidden = state.view !== "live";
+  document.getElementById("notes-team").hidden = state.view === "players" || state.view === "live";
 
   document.querySelectorAll(".seg button[data-n]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
   const custom = document.getElementById("custom-n");
@@ -1134,6 +1312,7 @@ function render() {
 
   if (state.view === "matchups") renderMatchups();
   else if (state.view === "players") renderPlayers();
+  else if (state.view === "live") renderLive();
   else renderStats();
   updateFit();
 }
