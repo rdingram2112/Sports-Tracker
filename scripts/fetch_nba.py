@@ -62,9 +62,10 @@ def parse_team(box_team):
 
 def main():
     existing = json.loads(OUT.read_text()) if OUT.exists() else {"teams": {}, "games": []}
-    have = {g["gameId"] for g in existing["games"]}
     teams = existing["teams"]
-    games = existing["games"]
+    # Games saved before points were recorded are dropped and downloaded again.
+    games = [g for g in existing["games"] if "pts" in g]
+    have = {g["gameId"] for g in games}
 
     league = get_json(f"{BASE}/scoreboard")["leagues"][0]
     season = league["season"]
@@ -90,6 +91,12 @@ def main():
             if len(box) != 2:
                 continue
             rows = [parse_team(t) for t in box]
+            scores = {
+                c["team"]["abbreviation"]: int(c["score"])
+                for c in summary["header"]["competitions"][0]["competitors"]
+            }
+            for row in rows:
+                row["pts"] = scores[row["team"]]
             for t in box:
                 info = t["team"]
                 teams[info["abbreviation"]] = {

@@ -162,7 +162,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   border-radius: 10px;
   overflow-x: auto;
 }
-table { border-collapse: collapse; width: 100%; min-width: 720px; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; width: 100%; min-width: 1040px; font-variant-numeric: tabular-nums; }
+th.grp, td.grp { border-left: 2px solid var(--line); }
 th, td { padding: 9px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 tbody tr:last-child td { border-bottom: 0; }
 th { background: var(--head-bg); position: sticky; top: 0; }
@@ -356,37 +357,59 @@ tbody tr:hover td { background: var(--head-bg); }
   </section>
 
   <div class="notes">
-    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest eFG%, 3P%, offensive rebounds and free throw attempts, and fewest turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
+    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest net rating, offensive rating, eFG%, 3P%, offensive rebounds and free throw attempts, and lowest defensive rating and turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
+    <p>Offensive and defensive ratings are points scored and allowed per 100 possessions; net rating is the difference. Possessions are estimated as FGA + 0.44 × FTA − OREB + TOV, averaged between the two teams, so values can differ slightly from NBA.com's.</p>
     <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, and 3P% = 3PM ÷ 3PA, both totaled across the window. OREB, FTA and TOV are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Source: ESPN box scores, updated every morning.</p>
   </div>
 </div>
 
 <script>
+// matchup: also shown on matchup cards. groupStart: draws a divider before the column.
 const STATS = [
-  { key: "efg", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true },
-  { key: "tp",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true },
-  { key: "oreb", label: "OREB", hint: "per game", higherBetter: true },
-  { key: "fta", label: "FTA",  hint: "per game", higherBetter: true },
-  { key: "tov", label: "TOV",  hint: "per game", higherBetter: false },
+  { key: "net",  label: "NET",  hint: "net rating", signed: true, higherBetter: true, matchup: true },
+  { key: "ortg", label: "ORTG", hint: "off. rating", higherBetter: true },
+  { key: "drtg", label: "DRTG", hint: "def. rating", higherBetter: false },
+  { key: "efg", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true, matchup: true, groupStart: true },
+  { key: "tp",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
+  { key: "oreb", label: "OREB", hint: "per game", higherBetter: true, matchup: true },
+  { key: "fta", label: "FTA",  hint: "per game", higherBetter: true, matchup: true },
+  { key: "tov", label: "TOV",  hint: "per game", higherBetter: false, matchup: true },
 ];
 const PRESETS = [5, 10, 15, 0];
 
-const state = { view: "stats", n: 10, sort: "efg", dir: null, day: null, data: null, schedule: null };
+const state = { view: "stats", n: 10, sort: "net", dir: null, day: null, data: null, schedule: null };
 
 function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
 
 /* ---------- numbers ---------- */
+// Estimated possessions for one team in one game.
+const possOf = g => g.fga + 0.44 * g.fta - g.oreb + g.tov;
+
 function aggregate(games, n) {
   const byTeam = {};
-  for (const g of games) (byTeam[g.team] ||= []).push(g);
+  const byGame = {};
+  for (const g of games) {
+    (byTeam[g.team] ||= []).push(g);
+    (byGame[g.gameId] ||= []).push(g);
+  }
   return Object.entries(byTeam).map(([team, list]) => {
     const slice = n > 0 ? list.slice(-n) : list;
-    const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, fta: 0, oreb: 0, tov: 0 };
-    for (const g of slice) for (const k in t) t[k] += g[k];
+    const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, fta: 0, oreb: 0, tov: 0, pts: 0 };
+    let oppPts = 0, poss = 0;
+    for (const g of slice) {
+      for (const k in t) t[k] += g[k];
+      const opp = byGame[g.gameId].find(x => x.team !== g.team);
+      oppPts += opp.pts;
+      poss += (possOf(g) + possOf(opp)) / 2; // average both teams' estimates
+    }
     const gp = slice.length;
+    const ortg = poss ? t.pts / poss * 100 : 0;
+    const drtg = poss ? oppPts / poss * 100 : 0;
     return {
       team, gp,
+      ortg, drtg,
+      net: ortg - drtg,
       efg: t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : 0,
       tp: t.tpa ? t.tpm / t.tpa * 100 : 0,
       oreb: t.oreb / gp,
@@ -411,7 +434,11 @@ function currentRows() {
   return rankAll(aggregate(state.data.games, state.n));
 }
 
-const fmt = (s, v) => s.pct ? v.toFixed(1) + "%" : v.toFixed(1);
+const fmt = (s, v) => {
+  if (s.pct) return v.toFixed(1) + "%";
+  if (s.signed) { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(1); }
+  return v.toFixed(1);
+};
 const rankClass = (rank, total) => rank <= 5 ? "good" : rank > total - 5 ? "bad" : "";
 const statCell = (s, r, total) => {
   const rank = r[s.key + "Rank"];
@@ -453,11 +480,11 @@ function renderStats() {
   document.getElementById("head-row").innerHTML =
     `<th><button type="button" data-sort="team">Team <span class="arrow">${arrow("team")}</span></button></th>` +
     `<th><span class="th-plain">GP</span><small>in window</small></th>` +
-    STATS.map(s => `<th aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
+    STATS.map(s => `<th class="${s.groupStart ? "grp" : ""}" aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
 
   document.getElementById("rows").innerHTML = rows.map(r => {
     const info = teamInfo(r.team);
-    const cells = STATS.map(s => `<td>${statCell(s, r, total)}</td>`).join("");
+    const cells = STATS.map(s => `<td class="${s.groupStart ? "grp" : ""}">${statCell(s, r, total)}</td>`).join("");
     return `<tr><td><div class="team">${logo(r.team)}<span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
   }).join("");
 }
@@ -503,7 +530,7 @@ function renderMatchups() {
     else if (g.state === "in") when = `<span class="live">Live · ${g.detail}</span>`;
     else when = g.detail || "Final";
 
-    const statRows = STATS.map(s => {
+    const statRows = STATS.filter(s => s.matchup).map(s => {
       if (!a || !h) return "";
       const ar = a[s.key + "Rank"], hr = h[s.key + "Rank"];
       const aEdge = ar < hr, hEdge = hr < ar;
