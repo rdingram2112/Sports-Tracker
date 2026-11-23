@@ -345,6 +345,7 @@ tbody tr:hover td { background: var(--head-bg); }
 /* Box score popup */
 #game-dialog {
   width: min(1000px, calc(100vw - 24px));
+  max-width: none; /* browsers cap dialogs narrower by default */
   max-height: calc(100dvh - 24px);
   padding: 0;
   border: 1px solid var(--line);
@@ -355,6 +356,7 @@ tbody tr:hover td { background: var(--head-bg); }
 }
 #game-dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 .gd { display: grid; grid-template-rows: auto 1fr; max-height: calc(100dvh - 26px); }
+.gd > *, .gd-head > * { min-width: 0; }
 .gd-head {
   display: flex;
   align-items: flex-start;
@@ -390,7 +392,7 @@ tbody tr:hover td { background: var(--head-bg); }
 .gd-team h3 .logo { width: 24px; height: 24px; }
 .box-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
 .box { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; font-size: 14px; }
-.box th, .box td { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: static; }
+.box th, .box td { padding: 6px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: static; }
 .box th { font: 600 12px var(--font-display); letter-spacing: 0.06em; color: var(--muted); background: var(--head-bg); }
 .box th:first-child, .box td:first-child { text-align: left; position: sticky; left: 0; z-index: 1; padding-left: 10px; }
 .box th:first-child { z-index: 2; }
@@ -399,8 +401,37 @@ tbody tr:hover td { background: var(--head-bg); }
 .box td.pts { font-weight: 700; }
 .box td.dim { color: var(--muted); }
 .box .bp { display: flex; align-items: center; gap: 8px; }
-.box .bp .shot { width: 28px; height: 28px; }
-.box .bp .pos { color: var(--muted); font-size: 12px; }
+.box .bp .shot { width: 26px; height: 26px; }
+.box .bp .bn { overflow: hidden; text-overflow: ellipsis; }
+.gd-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.gd-toggle {
+  font: 600 13px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gd-toggle:hover { background: var(--bg); }
+.gd-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 480px) {
+  .box { font-size: 13px; }
+  .box th, .box td { padding: 6px 4px; }
+  .box th:first-child, .box td:first-child { padding-left: 8px; }
+  .box th:last-child, .box td:last-child { padding-right: 8px; }
+  .box .bp { gap: 6px; }
+  .box .bp .shot { width: 22px; height: 22px; }
+  .box .bp .bn { max-width: 92px; }
+  .gd-toggle { padding: 6px 8px; font-size: 12px; }
+  /* Buttons get their own row above the score so nothing pushes the popup off screen */
+  .gd-head { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  #game-dialog { width: calc(100vw - 12px); max-width: none; max-height: calc(100dvh - 12px); }
+  .gd { max-height: calc(100dvh - 14px); }
+  .gd-body { padding-inline: 8px; }
+  .gd-actions { justify-content: space-between; }
+}
 .dnp { font-size: 13px; color: var(--muted); }
 .gd-msg { color: var(--muted); text-align: center; padding: 24px 8px; }
 @media (max-width: 480px) {
@@ -695,7 +726,10 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     <div class="gd">
       <div class="gd-head">
         <div class="gd-title" id="gd-title"></div>
-        <button type="button" class="gd-close" id="gd-close" aria-label="Close box score">✕</button>
+        <div class="gd-actions">
+          <button type="button" class="gd-toggle" id="gd-toggle" aria-pressed="false">Show all stats</button>
+          <button type="button" class="gd-close" id="gd-close" aria-label="Close box score">✕</button>
+        </div>
       </div>
       <div class="gd-body" id="gd-body"></div>
     </div>
@@ -1366,18 +1400,24 @@ document.getElementById("live-refresh").addEventListener("click", () => { if (!l
 
 /* ---------- box score popup ---------- */
 const SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary";
-const BOX_COLS = [
+// At a glance: these fit an iPhone screen. "Show all stats" adds the rest.
+const BOX_BASIC = [
   { key: "min", label: "MIN" },
-  { key: "efg", label: "eFG%" },
+  { key: "fg", label: "FG", made: "fgm", att: "fga" },
+  { key: "tp", label: "3PT", made: "tpm", att: "tpa" },
   { key: "pts", label: "PTS" },
   { key: "reb", label: "REB" },
-  { key: "oreb", label: "OREB" },
   { key: "ast", label: "AST" },
+];
+const BOX_EXTRA = [
   { key: "stl", label: "STL" },
   { key: "blk", label: "BLK" },
   { key: "tov", label: "TOV" },
+  { key: "pf", label: "PF" },
 ];
-const box = { gameId: null, timer: null };
+const BOX_SUM = ["min", "fgm", "fga", "tpm", "tpa", "pts", "reb", "ast", "stl", "blk", "tov", "pf"];
+const box = { gameId: null, timer: null, data: null, all: load("st.boxAll", false) === true };
+const boxCols = () => box.all ? [...BOX_BASIC, ...BOX_EXTRA] : BOX_BASIC;
 
 function parseBox(json) {
   const header = json.header?.competitions?.[0] || {};
@@ -1397,8 +1437,8 @@ function parseBox(json) {
       const stats = a.stats || [];
       if (a.didNotPlay || !stats.length) { dnp.push({ ...who, reason: a.reason || "" }); continue; }
       const [fgm, fga] = pair(stats, "FG"), [tpm, tpa] = pair(stats, "3PT");
-      played.push({ ...who, min: num(stats, "MIN"), pts: num(stats, "PTS"), reb: num(stats, "REB"), oreb: num(stats, "OREB"),
-        ast: num(stats, "AST"), stl: num(stats, "STL"), blk: num(stats, "BLK"), tov: num(stats, "TO"), fgm, fga, tpm, tpa });
+      played.push({ ...who, min: num(stats, "MIN"), pts: num(stats, "PTS"), reb: num(stats, "REB"),
+        ast: num(stats, "AST"), stl: num(stats, "STL"), blk: num(stats, "BLK"), tov: num(stats, "TO"), pf: num(stats, "PF"), fgm, fga, tpm, tpa });
     }
     return { abbr: block.team?.abbreviation, played, dnp };
   });
@@ -1406,12 +1446,12 @@ function parseBox(json) {
 }
 
 function boxRow(p, cls = "") {
-  const efg = efgOf(p);
+  const cell = c => c.made
+    ? `<td class="${p[c.att] ? "" : "dim"}">${p[c.made]}-${p[c.att]}</td>`
+    : `<td class="${c.key === "pts" ? "pts" : ""}">${p[c.key]}</td>`;
   return `<tr class="${cls}">
-    <td>${cls === "totals" ? "Team totals" : `<div class="bp">${headshot(p.id, p.name)}<span>${esc(p.short)}</span><span class="pos">${esc(p.pos)}</span></div>`}</td>
-    ${BOX_COLS.map(c => c.key === "efg"
-      ? `<td class="${efg == null ? "dim" : ""}" title="${p.fgm}-${p.fga} FG, ${p.tpm}-${p.tpa} 3PT">${efg == null ? "—" : efg.toFixed(1) + "%"}</td>`
-      : `<td class="${c.key === "pts" ? "pts" : ""}">${p[c.key]}</td>`).join("")}
+    <td>${cls === "totals" ? "Totals" : `<div class="bp">${headshot(p.id, p.name)}<span class="bn">${esc(p.short)}</span></div>`}</td>
+    ${boxCols().map(cell).join("")}
   </tr>`;
 }
 
@@ -1419,14 +1459,13 @@ function teamBox(t) {
   const info = teamInfo(t.abbr);
   const starters = t.played.filter(p => p.starter);
   const bench = t.played.filter(p => !p.starter);
-  const tot = { fgm: 0, fga: 0, tpm: 0, tpa: 0 };
-  for (const c of BOX_COLS) if (c.key !== "efg") tot[c.key] = 0;
-  for (const p of t.played) for (const k in tot) tot[k] += p[k];
-  const cols = BOX_COLS.length + 1;
+  const tot = Object.fromEntries(BOX_SUM.map(k => [k, 0]));
+  for (const p of t.played) for (const k of BOX_SUM) tot[k] += p[k];
+  const cols = boxCols().length + 1;
   return `<section class="gd-team">
     <h3>${logo(t.abbr)}${esc(info.name || t.abbr)}</h3>
     <div class="box-wrap"><table class="box">
-      <thead><tr><th>Player</th>${BOX_COLS.map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
+      <thead><tr><th>Player</th>${boxCols().map(c => `<th>${c.label}</th>`).join("")}</tr></thead>
       <tbody>
         ${starters.length ? `<tr class="section"><td colspan="${cols}">Starters</td></tr>${starters.map(p => boxRow(p)).join("")}` : ""}
         ${bench.length ? `<tr class="section"><td colspan="${cols}">Bench</td></tr>${bench.map(p => boxRow(p)).join("")}` : ""}
@@ -1473,6 +1512,7 @@ function loadBox(gameId, quiet) {
     .then(json => {
       if (box.gameId !== gameId) return; // closed or switched games meanwhile
       const data = parseBox(json);
+      box.data = data;
       renderBox(data);
       clearInterval(box.timer);
       box.timer = data.state === "in" ? setInterval(() => { if (!document.hidden) loadBox(gameId, true); }, LIVE_REFRESH_MS) : null;
@@ -1487,6 +1527,7 @@ function loadBox(gameId, quiet) {
 const dialog = document.getElementById("game-dialog");
 function openBox(gameId) {
   box.gameId = gameId;
+  box.data = null;
   if (!dialog.open) dialog.showModal();
   loadBox(gameId);
 }
@@ -1505,6 +1546,18 @@ document.getElementById("live-cards").addEventListener("keydown", e => {
   if (card) { e.preventDefault(); openBox(card.dataset.gid); }
 });
 document.getElementById("gd-close").addEventListener("click", closeBox);
+const syncToggle = () => {
+  const t = document.getElementById("gd-toggle");
+  t.textContent = box.all ? "Fewer stats" : "Show all stats";
+  t.setAttribute("aria-pressed", String(box.all));
+};
+syncToggle();
+document.getElementById("gd-toggle").addEventListener("click", () => {
+  box.all = !box.all;
+  save("st.boxAll", box.all);
+  syncToggle();
+  if (box.data) renderBox(box.data);
+});
 dialog.addEventListener("close", () => { box.gameId = null; clearInterval(box.timer); });
 // Clicking the dimmed area outside the popup closes it.
 dialog.addEventListener("click", e => { if (e.target === dialog) closeBox(); });
