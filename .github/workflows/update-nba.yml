@@ -1,0 +1,40 @@
+name: Update NBA stats
+
+on:
+  schedule:
+    # Every day at 11:23 UTC (6:23am Eastern), after the last West Coast games finish.
+    - cron: "23 11 * * *"
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-nba
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch new games
+        run: python3 scripts/fetch_nba.py
+
+      - name: Save changes
+        run: |
+          if git diff --quiet -- data/; then
+            echo "No new games."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git commit -m "Update NBA stats $(date -u +%Y-%m-%d)"
+          git push

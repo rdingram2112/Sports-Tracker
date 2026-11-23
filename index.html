@@ -322,7 +322,7 @@ document.getElementById("head-row").addEventListener("click", e => {
 
 state.n = load("st.n", 10);
 
-fetch("data/nba/games.json")
+fetch("data/nba/games.json", { cache: "no-cache" })
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then(data => {
     state.data = data;
