@@ -23,7 +23,7 @@ BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
 SCHEDULE_OUT = OUT.parent / "schedule.json"
 PLAYERS_OUT = OUT.parent / "players.json"
-PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "ast", "stl", "blk", "tov"]
+PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov"]
 REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
 REQUIRED_FIELDS = ("pts", "stl", "blk")
@@ -160,7 +160,7 @@ def main():
 
 
 def parse_players(summary, players):
-    """Return [team, playerId, min, pts, reb, ast, stl, blk, tov] for everyone who played.
+    """Return [team, playerId, min, pts, reb, oreb, ast, stl, blk, tov] for everyone who played.
 
     Also records each player's name, headshot and most recent team in `players`.
     """
@@ -190,7 +190,7 @@ def parse_players(summary, players):
                     "team": team,
                     "pos": (ath.get("position") or {}).get("abbreviation", ""),
                 }
-                rows.append([team, pid, num("MIN"), num("PTS"), num("REB"), num("AST"),
+                rows.append([team, pid, num("MIN"), num("PTS"), num("REB"), num("OREB"), num("AST"),
                              num("STL"), num("BLK"), num("TO")])
     return rows
 

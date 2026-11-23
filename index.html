@@ -24,6 +24,8 @@
   --bad-fg: #8f2b1e;
   --head-bg: #eef0f4;
   --edge-bg: #fdf0e9;
+  --bar-faded: #cdd2da;
+  --grid: #e7e9ee;
   --live: #c62828;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -34,7 +36,7 @@
     --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
     --accent: #f07a3e; --accent-ink: #1a0d05;
     --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
-    --edge-bg: #2a2019; --live: #ff6b6b;
+    --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37;
     color-scheme: dark;
   }
 }
@@ -42,7 +44,7 @@
   --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
   --accent: #f07a3e; --accent-ink: #1a0d05;
   --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
-  --edge-bg: #2a2019; --live: #ff6b6b;
+  --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -376,6 +378,62 @@ tbody tr:hover td { background: var(--head-bg); }
 .pname { font-weight: 600; }
 .pteam { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); }
 .pteam .logo { width: 16px; height: 16px; }
+/* Player rows open a game-by-game chart */
+tr.prow { cursor: pointer; }
+.pbtn { all: unset; cursor: pointer; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+tr.prow.open td { background: var(--head-bg); border-bottom-color: transparent; }
+tr.prow.open td.on { background: var(--edge-bg); }
+tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
+.pchart {
+  /* Stays in view even when the table scrolls sideways */
+  position: sticky;
+  left: 0;
+  width: var(--panel-w, 100%);
+  max-width: 100%;
+  padding: 14px 16px 16px;
+  display: grid;
+  gap: 10px;
+}
+.pchart-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.stat-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.stat-tabs button {
+  font: 600 13px var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 11px;
+  cursor: pointer;
+}
+.stat-tabs button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.pchart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.pchart-legend b { color: var(--fg); font-weight: 600; }
+.pchart-legend .diff.up { color: var(--good-fg); }
+.pchart-legend .diff.down { color: var(--bad-fg); }
+.sw { display: inline-block; width: 18px; height: 0; vertical-align: middle; margin-right: 6px; }
+.sw.season { border-top: 2px dashed var(--fg); }
+.sw.period { border-top: 3px solid var(--accent); }
+.sw.faded { width: 10px; height: 10px; border-radius: 2px; background: var(--bar-faded); }
+.chart-box { position: relative; }
+.chart-box svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-box .tick { font: 500 11px var(--font-body); fill: var(--muted); }
+.chart-tip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.3;
+  padding: 6px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 8px));
+  z-index: 4;
+}
+.chart-tip b { font-size: 15px; }
+
 .pmore { display: flex; justify-content: center; }
 .pmore button {
   font: 600 14px var(--font-body);
@@ -393,6 +451,10 @@ tbody tr:hover td { background: var(--head-bg); }
 .notes p { margin: 0; max-width: 75ch; }
 .error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; display: inline-block; }
 @media (max-width: 1400px) { .team .name { display: none; } }
+@media (max-width: 480px) {
+  .seg { flex-wrap: nowrap; }
+  .seg button { padding: 7px 9px; font-size: 14px; }
+}
 @media (max-width: 400px) {
   .cards { grid-template-columns: 1fr; }
   .mrow { grid-template-columns: 1fr 52px 1fr; }
@@ -474,7 +536,7 @@ tbody tr:hover td { background: var(--head-bg); }
       <div class="table-box">
         <table class="ptable">
           <thead><tr id="p-head"></tr></thead>
-          <tbody id="p-rows"><tr><td colspan="9" class="ploading">Loading players…</td></tr></tbody>
+          <tbody id="p-rows"><tr><td colspan="10" class="ploading">Loading players…</td></tr></tbody>
         </table>
       </div>
       <div class="pmore"><button type="button" id="p-more" hidden></button></div>
@@ -517,12 +579,14 @@ const state = {
   // Players view
   players: null, playersLoading: false, playersError: false,
   pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
+  pexpanded: null, pchartStat: null,
 };
 const VIEWS = ["stats", "matchups", "players"];
 const PSTATS = [
   { key: "min", label: "MIN" },
   { key: "pts", label: "PTS" },
   { key: "reb", label: "REB" },
+  { key: "oreb", label: "OREB" },
   { key: "ast", label: "AST" },
   { key: "stl", label: "STL" },
   { key: "blk", label: "BLK" },
@@ -814,7 +878,7 @@ function renderPlayers() {
 
   if (!state.players) {
     loadPlayers();
-    body.innerHTML = `<tr><td colspan="9" class="ploading">${state.playersError ? "Couldn't load the player data file (data/nba/players.json)." : "Loading players…"}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="ploading">${state.playersError ? "Couldn't load the player data file (data/nba/players.json)." : "Loading players…"}</td></tr>`;
     more.hidden = true;
     return;
   }
@@ -841,16 +905,152 @@ function renderPlayers() {
   if (!state.pall && !q) shown = shown.slice(0, PLAYER_LIMIT);
 
   const show = v => per ? v.toFixed(1) : String(v);
-  body.innerHTML = shown.length ? shown.map(r => `<tr>
-      <td><div class="player"><span class="prank">${r.rank}</span>${headshot(r.id, r.name)}<div class="pwho"><span class="pname">${r.name}</span><span class="pteam">${logo(r.team)}${r.team}${r.pos ? ` · ${r.pos}` : ""}</span></div></div></td>
+  const cols = 2 + PSTATS.length;
+  body.innerHTML = shown.length ? shown.map(r => {
+    const open = state.pexpanded === r.id;
+    const row = `<tr class="prow${open ? " open" : ""}" data-pid="${r.id}">
+      <td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${r.name}: show game-by-game chart"><div class="player"><span class="prank">${r.rank}</span>${headshot(r.id, r.name)}<div class="pwho"><span class="pname">${r.name}</span><span class="pteam">${logo(r.team)}${r.team}${r.pos ? ` · ${r.pos}` : ""}</span></div></div></button></td>
       <td class="${state.psort === "gp" ? "on" : "dim"}">${r.gp}</td>
       ${PSTATS.map(s => `<td class="${state.psort === s.key ? "on" : ""}">${show(r[s.key])}</td>`).join("")}
-    </tr>`).join("")
-    : `<tr><td colspan="9" class="ploading">No players match “${state.pq}”.</td></tr>`;
+    </tr>`;
+    return open ? row + `<tr class="pchart-row"><td colspan="${cols}"><div class="pchart" id="pchart"></div></td></tr>` : row;
+  }).join("")
+    : `<tr><td colspan="${cols}" class="ploading">No players match “${state.pq}”.</td></tr>`;
 
   more.hidden = q || total <= PLAYER_LIMIT;
   more.textContent = state.pall ? `Show top ${PLAYER_LIMIT}` : `Show all ${total} players`;
+  if (document.getElementById("pchart")) renderPlayerChart();
 }
+
+/* ---------- player game-by-game chart ---------- */
+const PERIOD_NAMES = { 7: "Last week", 14: "Last 2 weeks", 30: "Last month" };
+
+function renderPlayerChart() {
+  const panel = document.getElementById("pchart");
+  const pid = state.pexpanded;
+  const { info, byPlayer, col } = state.players;
+  const lines = byPlayer[pid] || [];
+  const stat = PSTATS.find(s => s.key === state.pchartStat) || PSTATS.find(s => s.key === state.psort) || PSTATS[1];
+  const start = periodStart();
+
+  // Each game: its day, opponent, and the player's value for the chosen stat.
+  const meta = {};
+  for (const g of state.data.games) meta[g.gameId + "|" + g.team] = { day: etDay(g.date), opp: g.opp, home: g.home };
+  const games = lines.map(row => {
+    const m = meta[row[col.gameId] + "|" + row[col.team]] || {};
+    return { day: m.day, opp: m.opp, home: m.home, team: row[col.team], v: row[col[stat.key]], inPeriod: !start || m.day >= start };
+  });
+  const avg = games.reduce((a, g) => a + g.v, 0) / (games.length || 1);
+  const recent = games.filter(g => g.inPeriod);
+  const recentAvg = recent.reduce((a, g) => a + g.v, 0) / (recent.length || 1);
+
+  // Keep the panel the width of the visible table area, even when the table scrolls sideways.
+  const box = panel.closest(".table-box");
+  panel.style.setProperty("--panel-w", box.clientWidth + "px");
+
+  const diff = recentAvg - avg;
+  const diffText = Math.abs(diff) < 0.05 ? "even" : (diff > 0 ? "+" : "−") + Math.abs(diff).toFixed(1);
+  // Green means better than usual; more turnovers is worse.
+  const better = stat.key === "tov" ? -diff : diff;
+  const legend = start
+    ? `<span><span class="sw season"></span>Season avg <b>${avg.toFixed(1)}</b> (${games.length} games)</span>
+       <span><span class="sw period"></span>${PERIOD_NAMES[state.pspan]} avg <b>${recentAvg.toFixed(1)}</b> (${recent.length} game${recent.length === 1 ? "" : "s"}) <span class="diff ${better > 0.05 ? "up" : better < -0.05 ? "down" : ""}">${diffText} vs season</span></span>
+       <span><span class="sw faded"></span>Earlier games</span>`
+    : `<span><span class="sw season"></span>Season avg <b>${avg.toFixed(1)}</b> (${games.length} games)</span>`;
+
+  panel.innerHTML = `
+    <div class="pchart-top">
+      <div class="stat-tabs" role="group" aria-label="Stat to chart">
+        ${PSTATS.map(s => `<button type="button" data-pstat="${s.key}" aria-pressed="${s.key === stat.key}">${s.label}</button>`).join("")}
+      </div>
+      <div class="pchart-legend">${legend}</div>
+    </div>
+    <div class="chart-box"><div class="chart-tip" hidden></div></div>`;
+
+  drawBars(panel.querySelector(".chart-box"), games, avg, start ? recentAvg : null, stat, info[pid]?.name || "");
+}
+
+function drawBars(box, games, avg, recentAvg, stat, name) {
+  const W = Math.max(280, box.clientWidth);
+  const H = 200;
+  const m = { top: 14, right: 8, bottom: 26, left: 32 };
+  const pw = W - m.left - m.right, ph = H - m.top - m.bottom;
+  const maxV = Math.max(1, avg, recentAvg || 0, ...games.map(g => g.v));
+  const step = niceStep(maxV / 4);
+  const top = Math.ceil(maxV / step) * step;
+  const y = v => m.top + ph - (v / top) * ph;
+  const band = pw / Math.max(1, games.length);
+  const gap = Math.min(6, Math.max(2, band * 0.25));
+  const bw = Math.max(2, band - gap);
+  const r = Math.min(4, bw / 2);
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${name}: ${stat.label} by game this season">`;
+  // Grid and y-axis labels
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
+    svg += `<text class="tick" x="${m.left - 6}" y="${y(v) + 4}" text-anchor="end">${+v.toFixed(1)}</text>`;
+  }
+  // Bars: rounded top, flat on the baseline
+  games.forEach((g, i) => {
+    const x = m.left + i * band + gap / 2;
+    const h = (g.v / top) * ph;
+    const fill = g.inPeriod ? "var(--accent)" : "var(--bar-faded)";
+    if (h > 0) {
+      const rr = Math.min(r, h);
+      const y0 = m.top + ph, y1 = y0 - h;
+      svg += `<path d="M${x},${y0} V${y1 + rr} Q${x},${y1} ${x + rr},${y1} H${x + bw - rr} Q${x + bw},${y1} ${x + bw},${y1 + rr} V${y0} Z" fill="${fill}"/>`;
+    }
+  });
+  // Baseline
+  svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${m.top + ph}" y2="${m.top + ph}" stroke="var(--muted)" stroke-width="1"/>`;
+  // Season average (dashed, full width) and period average (solid, over the period's games)
+  svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${y(avg)}" y2="${y(avg)}" stroke="var(--fg)" stroke-width="2" stroke-dasharray="6 4"/>`;
+  if (recentAvg != null) {
+    const firstIdx = games.findIndex(g => g.inPeriod);
+    if (firstIdx >= 0) {
+      const x1 = m.left + firstIdx * band;
+      svg += `<line x1="${x1}" x2="${m.left + games.length * band}" y1="${y(recentAvg)}" y2="${y(recentAvg)}" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
+    }
+  }
+  // A few date labels along the bottom
+  const labelEvery = Math.max(1, Math.ceil(games.length / Math.max(2, Math.floor(pw / 70))));
+  games.forEach((g, i) => {
+    if (i % labelEvery !== 0) return;
+    const cx = m.left + i * band + band / 2;
+    svg += `<text class="tick" x="${cx}" y="${H - 6}" text-anchor="middle">${shortDay(g.day)}</text>`;
+  });
+  // Hover targets: the full column height for each game
+  games.forEach((g, i) => {
+    svg += `<rect class="hit" data-i="${i}" x="${m.left + i * band}" y="${m.top}" width="${band}" height="${ph}" fill="transparent"/>`;
+  });
+  svg += `</svg>`;
+  box.insertAdjacentHTML("beforeend", svg);
+
+  const tip = box.querySelector(".chart-tip");
+  const svgEl = box.querySelector("svg");
+  const show = e => {
+    const hit = e.target.closest("rect.hit");
+    if (!hit) { tip.hidden = true; return; }
+    const g = games[Number(hit.dataset.i)];
+    const scale = svgEl.getBoundingClientRect().width / W;
+    const cx = (Number(hit.getAttribute("x")) + band / 2) * scale;
+    const cy = y(g.v) * scale;
+    tip.innerHTML = `<b>${g.v}</b> ${stat.label} · ${shortDay(g.day)} ${g.home ? "vs" : "@"} ${g.opp}`;
+    tip.style.left = Math.min(Math.max(cx, 70), box.clientWidth - 70) + "px";
+    tip.style.top = cy + "px";
+    tip.hidden = false;
+  };
+  svgEl.addEventListener("pointermove", show);
+  svgEl.addEventListener("pointerdown", show);
+  svgEl.addEventListener("pointerleave", () => { tip.hidden = true; });
+}
+
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 0.1))));
+  for (const f of [1, 2, 2.5, 5, 10]) if (f * p >= raw) return f * p;
+  return 10 * p;
+}
+const shortDay = day => day ? new Date(day + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 
 /* ---------- shell ---------- */
 function render() {
@@ -886,7 +1086,11 @@ function updateFit() {
     box.classList.toggle("fits", table.offsetWidth <= box.clientWidth + 1);
   });
 }
-window.addEventListener("resize", () => { if (state.data) updateFit(); });
+window.addEventListener("resize", () => {
+  if (!state.data) return;
+  updateFit();
+  if (state.view === "players" && document.getElementById("pchart")) renderPlayerChart();
+});
 document.fonts?.ready.then(() => { if (state.data) updateFit(); });
 
 const viewFromHash = () => VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "stats";
@@ -918,6 +1122,17 @@ document.getElementById("p-head").addEventListener("click", e => {
 document.getElementById("p-search").addEventListener("input", e => { state.pq = e.target.value; render(); });
 document.getElementById("p-more").addEventListener("click", () => { state.pall = !state.pall; render(); });
 // A player with no ESPN photo gets their initials instead.
+document.getElementById("p-rows").addEventListener("click", e => {
+  const tab = e.target.closest("button[data-pstat]");
+  if (tab) { state.pchartStat = tab.dataset.pstat; renderPlayerChart(); return; }
+  if (e.target.closest(".pchart")) return; // clicks inside the chart panel don't close it
+  const row = e.target.closest("tr.prow");
+  if (!row) return;
+  const pid = row.dataset.pid;
+  state.pexpanded = state.pexpanded === pid ? null : pid;
+  state.pchartStat = null; // open on the stat the table is sorted by
+  render();
+});
 document.getElementById("p-rows").addEventListener("error", e => {
   if (e.target.tagName !== "IMG") return;
   e.target.parentNode.classList.add("noimg");
