@@ -23,7 +23,7 @@ BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
 SCHEDULE_OUT = OUT.parent / "schedule.json"
 PLAYERS_OUT = OUT.parent / "players.json"
-PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov"]
+PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa"]
 REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
 REQUIRED_FIELDS = ("pts", "stl", "blk")
@@ -160,7 +160,7 @@ def main():
 
 
 def parse_players(summary, players):
-    """Return [team, playerId, min, pts, reb, oreb, ast, stl, blk, tov] for everyone who played.
+    """Return [team, playerId, min, pts, reb, oreb, ast, stl, blk, tov, fgm, fga, tpm, tpa] for everyone who played.
 
     Also records each player's name, headshot and most recent team in `players`.
     """
@@ -182,6 +182,13 @@ def parse_players(summary, players):
                     except (KeyError, ValueError, IndexError):
                         return 0
 
+                def made_att(label):  # "7-15" -> (7, 15)
+                    try:
+                        made, att = stats[idx[label]].split("-")
+                        return int(made), int(att)
+                    except (KeyError, ValueError, IndexError):
+                        return 0, 0
+
                 ath = a["athlete"]
                 pid = str(ath["id"])
                 players[pid] = {
@@ -191,7 +198,7 @@ def parse_players(summary, players):
                     "pos": (ath.get("position") or {}).get("abbreviation", ""),
                 }
                 rows.append([team, pid, num("MIN"), num("PTS"), num("REB"), num("OREB"), num("AST"),
-                             num("STL"), num("BLK"), num("TO")])
+                             num("STL"), num("BLK"), num("TO"), *made_att("FG"), *made_att("3PT")])
     return rows
 
 
