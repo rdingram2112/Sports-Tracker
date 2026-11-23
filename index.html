@@ -340,6 +340,54 @@ tbody tr:hover td { background: var(--head-bg); }
   color: var(--muted);
 }
 
+/* Players */
+.pview { display: grid; gap: 14px; }
+.pview > * { min-width: 0; }
+.ptools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.psearch input {
+  width: min(260px, 70vw);
+  font: 500 15px var(--font-body);
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.pqual { color: var(--muted); font-size: 13px; }
+.ptable th:first-child, .ptable td:first-child { text-align: left; }
+.ptable td { padding-block: 7px; }
+.ptable th.on button { color: var(--accent); }
+.ptable td.on { background: var(--edge-bg); font-weight: 600; }
+.ptable td.dim { color: var(--muted); }
+.player { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.prank { width: 2em; text-align: right; color: var(--muted); font-size: 13px; flex: none; }
+.shot {
+  width: 40px; height: 40px; flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--head-bg);
+  display: grid;
+  place-items: center;
+}
+.shot img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.shot.noimg::before { content: attr(data-init); font: 600 14px var(--font-display); color: var(--muted); letter-spacing: 0.04em; }
+.pwho { display: grid; min-width: 0; line-height: 1.2; }
+.pname { font-weight: 600; }
+.pteam { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); }
+.pteam .logo { width: 16px; height: 16px; }
+.pmore { display: flex; justify-content: center; }
+.pmore button {
+  font: 600 14px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.pmore button:hover { background: var(--head-bg); }
+.ploading { text-align: center !important; color: var(--muted); padding: 24px !important; }
+
 .notes { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
 .notes p { margin: 0; max-width: 75ch; }
 .error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; display: inline-block; }
@@ -359,6 +407,7 @@ tbody tr:hover td { background: var(--head-bg); }
       <select id="view" aria-label="View">
         <option value="stats">Team stats</option>
         <option value="matchups">Matchups</option>
+        <option value="players">Players</option>
       </select>
     </label>
   </div>
@@ -399,7 +448,35 @@ tbody tr:hover td { background: var(--head-bg); }
     </div>
   </section>
 
-  <div class="notes">
+  <section id="view-players" hidden>
+    <div class="pview">
+      <div class="ptools">
+        <div class="seg pmode" role="group" aria-label="Totals or per game">
+          <button type="button" data-pmode="per">Per game</button>
+          <button type="button" data-pmode="total">Totals</button>
+        </div>
+        <label class="psearch" for="p-search">
+          <span hidden>Find a player or team</span>
+          <input id="p-search" type="search" placeholder="Find a player or team" autocomplete="off">
+        </label>
+        <span class="pqual" id="p-qual"></span>
+      </div>
+      <div class="table-box">
+        <table class="ptable">
+          <thead><tr id="p-head"></tr></thead>
+          <tbody id="p-rows"><tr><td colspan="9" class="ploading">Loading players…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pmore"><button type="button" id="p-more" hidden></button></div>
+    </div>
+  </section>
+
+  <div class="notes" id="notes-players" hidden>
+    <p>For players, "last X games" means each player's own last X games played, so games they missed don't count against them. Per game lists only players who played in at least half the window (half of their team's games for the full season); Totals lists everyone. Click a column to sort by it, and click again to reverse.</p>
+    <p>Team is the player's team in his most recent game in the window. Photos and box scores come from ESPN, updated every morning.</p>
+  </div>
+
+  <div class="notes" id="notes-team">
     <p>Click a team in Team stats to see each game in the selected window, most recent first.</p>
     <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest net rating, offensive rating, eFG%, 3P%, 3P rate, offensive rebounds, free throw attempts, FT%, steals and blocks, and lowest defensive rating and turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
     <p>Offensive and defensive ratings are points scored and allowed per 100 possessions; net rating is the difference. Possessions are estimated as FGA + 0.44 × FTA − OREB + TOV, averaged between the two teams, so values can differ slightly from NBA.com's.</p>
@@ -425,7 +502,23 @@ const STATS = [
 ];
 const PRESETS = [5, 10, 15, 0];
 
-const state = { view: "stats", n: 10, sort: "net", dir: null, expanded: null, day: null, data: null, schedule: null };
+const state = {
+  view: "stats", n: 10, sort: "net", dir: null, expanded: null, day: null, data: null, schedule: null,
+  // Players view
+  players: null, playersLoading: false, playersError: false,
+  pmode: "per", psort: "pts", pdir: "desc", pall: false, pq: "",
+};
+const VIEWS = ["stats", "matchups", "players"];
+const PSTATS = [
+  { key: "min", label: "MIN" },
+  { key: "pts", label: "PTS" },
+  { key: "reb", label: "REB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "blk", label: "BLK" },
+  { key: "tov", label: "TOV" },
+];
+const PLAYER_LIMIT = 50;
 
 function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
@@ -636,42 +729,165 @@ function renderMatchups() {
   }).join("");
 }
 
+/* ---------- players view ---------- */
+function loadPlayers() {
+  if (state.players || state.playersLoading) return;
+  state.playersLoading = true;
+  fetch("data/nba/players.json", { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(p => {
+      // Group each player's game lines in date order (the file is already sorted by date).
+      const col = Object.fromEntries(p.cols.map((c, i) => [c, i]));
+      const byPlayer = {};
+      for (const row of p.rows) (byPlayer[row[col.player]] ||= []).push(row);
+      state.players = { info: p.players, byPlayer, col };
+    })
+    .catch(() => { state.playersError = true; })
+    .finally(() => { state.playersLoading = false; render(); });
+}
+
+const initials = name => name.split(/\s+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+const headshot = (id, name) =>
+  `<span class="shot" data-init="${initials(name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${id}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="40" height="40"></span>`;
+
+function playerLeaders() {
+  const { info, byPlayer, col } = state.players;
+  const n = state.n;
+  const per = state.pmode === "per";
+  // Per game needs at least half the window; for the full season, half of the most games any team has played.
+  const teamGames = {};
+  for (const g of state.data.games) teamGames[g.team] = (teamGames[g.team] || 0) + 1;
+  const maxTeamGames = Math.max(...Object.values(teamGames));
+  const minGP = per ? Math.ceil((n > 0 ? n : maxTeamGames) / 2) : 1;
+
+  let list = [];
+  for (const [pid, lines] of Object.entries(byPlayer)) {
+    const slice = n > 0 ? lines.slice(-n) : lines;
+    const gp = slice.length;
+    if (gp < minGP) continue;
+    const tot = Object.fromEntries(PSTATS.map(s => [s.key, 0]));
+    for (const row of slice) for (const s of PSTATS) tot[s.key] += row[col[s.key]];
+    const p = info[pid] || { name: pid, short: pid };
+    const vals = per ? Object.fromEntries(PSTATS.map(s => [s.key, tot[s.key] / gp])) : tot;
+    list.push({ id: pid, name: p.name, pos: p.pos || "", team: slice[slice.length - 1][col.team], gp, ...vals });
+  }
+  const k = state.psort;
+  const sign = state.pdir === "desc" ? -1 : 1;
+  list.sort((a, b) => k === "name" ? a.name.localeCompare(b.name) * sign : ((a[k] - b[k]) * sign || b.pts - a.pts || a.name.localeCompare(b.name)));
+  list.forEach((r, i) => { r.rank = i + 1; });
+  return { list, minGP };
+}
+
+function renderPlayers() {
+  const head = document.getElementById("p-head");
+  const body = document.getElementById("p-rows");
+  const more = document.getElementById("p-more");
+  document.querySelectorAll(".pmode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pmode === state.pmode)));
+
+  if (!state.players) {
+    loadPlayers();
+    body.innerHTML = `<tr><td colspan="9" class="ploading">${state.playersError ? "Couldn't load the player data file (data/nba/players.json)." : "Loading players…"}</td></tr>`;
+    more.hidden = true;
+    return;
+  }
+
+  const per = state.pmode === "per";
+  const { list, minGP } = playerLeaders();
+  document.getElementById("p-qual").textContent = per
+    ? `Players with at least ${minGP} game${minGP === 1 ? "" : "s"} played · ${list.length} players`
+    : `${list.length} players`;
+
+  const arrow = key => state.psort === key ? (state.pdir === "desc" ? "▼" : "▲") : "";
+  head.innerHTML =
+    `<th><button type="button" data-psort="name">Player <span class="arrow">${arrow("name")}</span></button></th>` +
+    `<th class="${state.psort === "gp" ? "on" : ""}"><button type="button" data-psort="gp">GP <span class="arrow">${arrow("gp")}</span></button><small>games</small></th>` +
+    PSTATS.map(s => `<th class="${state.psort === s.key ? "on" : ""}"><button type="button" data-psort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${per ? "per game" : "total"}</small></th>`).join("");
+
+  const q = state.pq.trim().toLowerCase();
+  let shown = q
+    ? list.filter(r => r.name.toLowerCase().includes(q) || r.team.toLowerCase() === q || (teamInfo(r.team).name || "").toLowerCase().includes(q))
+    : list;
+  const total = shown.length;
+  if (!state.pall && !q) shown = shown.slice(0, PLAYER_LIMIT);
+
+  const show = v => per ? v.toFixed(1) : String(v);
+  body.innerHTML = shown.length ? shown.map(r => `<tr>
+      <td><div class="player"><span class="prank">${r.rank}</span>${headshot(r.id, r.name)}<div class="pwho"><span class="pname">${r.name}</span><span class="pteam">${logo(r.team)}${r.team}${r.pos ? ` · ${r.pos}` : ""}</span></div></div></td>
+      <td class="${state.psort === "gp" ? "on" : "dim"}">${r.gp}</td>
+      ${PSTATS.map(s => `<td class="${state.psort === s.key ? "on" : ""}">${show(r[s.key])}</td>`).join("")}
+    </tr>`).join("")
+    : `<tr><td colspan="9" class="ploading">No players match “${state.pq}”.</td></tr>`;
+
+  more.hidden = q || total <= PLAYER_LIMIT;
+  more.textContent = state.pall ? `Show top ${PLAYER_LIMIT}` : `Show all ${total} players`;
+}
+
 /* ---------- shell ---------- */
 function render() {
   if (!state.data) return;
   const windowText = state.n > 0 ? `the last ${state.n} games` : "the full season";
-  document.getElementById("headline").textContent =
-    state.view === "matchups" ? `Matchups using ${windowText}` : (state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season");
+  const headlines = {
+    stats: state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season",
+    matchups: `Matchups using ${windowText}`,
+    players: state.n > 0 ? `Player leaders over their last ${state.n} games` : "Player leaders for the full season",
+  };
+  document.getElementById("headline").textContent = headlines[state.view];
   document.getElementById("view").value = state.view;
-  document.getElementById("view-stats").hidden = state.view !== "stats";
-  document.getElementById("view-matchups").hidden = state.view !== "matchups";
+  for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = state.view !== v;
+  document.getElementById("notes-players").hidden = state.view !== "players";
+  document.getElementById("notes-team").hidden = state.view === "players";
 
-  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
+  document.querySelectorAll(".seg button[data-n]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
   const custom = document.getElementById("custom-n");
   if (!PRESETS.includes(state.n)) custom.value = state.n;
   else if (document.activeElement !== custom) custom.value = "";
 
-  if (state.view === "matchups") renderMatchups(); else { renderStats(); updateFit(); }
+  if (state.view === "matchups") renderMatchups();
+  else if (state.view === "players") renderPlayers();
+  else renderStats();
+  updateFit();
 }
 
-// If the whole table fits on screen, let the header stick to the window; otherwise scroll inside the box.
+// If a whole table fits on screen, let its header stick to the window; otherwise scroll inside the box.
 function updateFit() {
-  const box = document.querySelector(".table-box");
-  const table = box.querySelector("table");
-  box.classList.toggle("fits", table.offsetWidth <= box.clientWidth + 1);
+  document.querySelectorAll("section:not([hidden]) .table-box").forEach(box => {
+    const table = box.querySelector("table");
+    box.classList.toggle("fits", table.offsetWidth <= box.clientWidth + 1);
+  });
 }
-window.addEventListener("resize", () => { if (state.view === "stats" && state.data) updateFit(); });
-document.fonts?.ready.then(() => { if (state.view === "stats" && state.data) updateFit(); });
+window.addEventListener("resize", () => { if (state.data) updateFit(); });
+document.fonts?.ready.then(() => { if (state.data) updateFit(); });
 
+const viewFromHash = () => VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "stats";
 function setView(v) {
-  state.view = v === "matchups" ? "matchups" : "stats";
-  const hash = state.view === "matchups" ? "#matchups" : "";
+  state.view = VIEWS.includes(v) ? v : "stats";
+  const hash = state.view === "stats" ? "" : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
   render();
 }
 
 document.getElementById("view").addEventListener("change", e => setView(e.target.value));
-window.addEventListener("hashchange", () => setView(location.hash === "#matchups" ? "matchups" : "stats"));
+window.addEventListener("hashchange", () => setView(viewFromHash()));
+document.querySelector(".pmode").addEventListener("click", e => {
+  const b = e.target.closest("button[data-pmode]");
+  if (b) { state.pmode = b.dataset.pmode; render(); }
+});
+document.getElementById("p-head").addEventListener("click", e => {
+  const b = e.target.closest("button[data-psort]");
+  if (!b) return;
+  const k = b.dataset.psort;
+  if (state.psort === k) state.pdir = state.pdir === "desc" ? "asc" : "desc";
+  else { state.psort = k; state.pdir = k === "name" ? "asc" : "desc"; }
+  render();
+});
+document.getElementById("p-search").addEventListener("input", e => { state.pq = e.target.value; render(); });
+document.getElementById("p-more").addEventListener("click", () => { state.pall = !state.pall; render(); });
+// A player with no ESPN photo gets their initials instead.
+document.getElementById("p-rows").addEventListener("error", e => {
+  if (e.target.tagName !== "IMG") return;
+  e.target.parentNode.classList.add("noimg");
+  e.target.remove();
+}, true);
 document.querySelector(".seg").addEventListener("click", e => {
   const b = e.target.closest("button[data-n]");
   if (b) { state.n = Number(b.dataset.n); save("st.n", state.n); render(); }
@@ -702,7 +918,7 @@ document.getElementById("days").addEventListener("click", e => {
 });
 
 state.n = load("st.n", 10);
-state.view = location.hash === "#matchups" ? "matchups" : "stats";
+state.view = viewFromHash();
 
 Promise.all([
   fetch("data/nba/games.json", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),

@@ -5,7 +5,8 @@ Writes data/nba/games.json: one record per team per completed game.
 Runs incrementally: games already in the file are not downloaded again.
 
 Also writes data/nba/schedule.json: regular-season games for today and the
-next several days (US Eastern dates), for the Matchups view.
+next several days (US Eastern dates), for the Matchups view, and
+data/nba/players.json: one row per player per game played, for the Players view.
 
 Usage:
     python3 scripts/fetch_nba.py
@@ -21,6 +22,8 @@ from zoneinfo import ZoneInfo
 BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
 SCHEDULE_OUT = OUT.parent / "schedule.json"
+PLAYERS_OUT = OUT.parent / "players.json"
+PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "ast", "stl", "blk", "tov"]
 REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
 REQUIRED_FIELDS = ("pts", "stl", "blk")
@@ -70,6 +73,11 @@ def main():
     games = [g for g in existing["games"] if all(k in g for k in REQUIRED_FIELDS)]
     have = {g["gameId"] for g in games}
 
+    pdata = json.loads(PLAYERS_OUT.read_text()) if PLAYERS_OUT.exists() else {}
+    players = pdata.get("players", {})
+    player_rows = pdata.get("rows", []) if pdata.get("cols") == PLAYER_COLS else []
+    have_players = {r[0] for r in player_rows}
+
     league = get_json(f"{BASE}/scoreboard")["leagues"][0]
     season = league["season"]
     today = datetime.now(timezone.utc).date()
@@ -87,11 +95,22 @@ def main():
         for ev in sb.get("events", []):
             if ev["season"]["type"] != REGULAR_SEASON:
                 continue
-            if ev["status"]["type"]["name"] != "STATUS_FINAL" or ev["id"] in have:
+            if ev["status"]["type"]["name"] != "STATUS_FINAL":
+                continue
+            need_team = ev["id"] not in have
+            need_players = ev["id"] not in have_players
+            if not need_team and not need_players:
                 continue
             summary = get_json(f"{BASE}/summary?event={ev['id']}")
             box = summary["boxscore"]["teams"]
             if len(box) != 2:
+                continue
+            if need_players:
+                for row in parse_players(summary, players):
+                    player_rows.append([ev["id"]] + row)
+                have_players.add(ev["id"])
+            if not need_team:
+                time.sleep(0.2)
                 continue
             rows = [parse_team(t) for t in box]
             scores = {
@@ -128,7 +147,52 @@ def main():
     OUT.write_text(json.dumps(out, separators=(",", ":")))
     print(f"Added {new} games; {len(games) // 2} total in {OUT}")
 
+    game_order = {g["gameId"]: i for i, g in enumerate(games[::2])}
+    player_rows.sort(key=lambda r: (game_order.get(r[0], 1e9), r[1], r[2]))
+    PLAYERS_OUT.write_text(
+        "{" + f'"cols":{json.dumps(PLAYER_COLS)},'
+        + f'"players":{json.dumps(dict(sorted(players.items())), separators=(",", ":"))},'
+        + '"rows":[\n' + ",\n".join(json.dumps(r, separators=(",", ":")) for r in player_rows) + "\n]}"
+    )
+    print(f"Saved {len(player_rows)} player game lines for {len(players)} players in {PLAYERS_OUT}")
+
     write_schedule(season["displayName"])
+
+
+def parse_players(summary, players):
+    """Return [team, playerId, min, pts, reb, ast, stl, blk, tov] for everyone who played.
+
+    Also records each player's name, headshot and most recent team in `players`.
+    """
+    rows = []
+    for team_block in summary["boxscore"].get("players", []):
+        team = team_block["team"]["abbreviation"]
+        for table in team_block.get("statistics", []):
+            keys = table.get("keys") or table.get("names") or []
+            labels = table.get("labels") or keys
+            idx = {name: i for i, name in enumerate(labels)}
+            for a in table.get("athletes", []):
+                stats = a.get("stats") or []
+                if a.get("didNotPlay") or not stats:
+                    continue
+
+                def num(label):
+                    try:
+                        return int(stats[idx[label]])
+                    except (KeyError, ValueError, IndexError):
+                        return 0
+
+                ath = a["athlete"]
+                pid = str(ath["id"])
+                players[pid] = {
+                    "name": ath.get("displayName", ""),
+                    "short": ath.get("shortName", ath.get("displayName", "")),
+                    "team": team,
+                    "pos": (ath.get("position") or {}).get("abbreviation", ""),
+                }
+                rows.append([team, pid, num("MIN"), num("PTS"), num("REB"), num("AST"),
+                             num("STL"), num("BLK"), num("TO")])
+    return rows
 
 
 def write_schedule(season_name):
