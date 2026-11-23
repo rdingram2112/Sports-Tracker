@@ -4,6 +4,9 @@
 Writes data/nba/games.json: one record per team per completed game.
 Runs incrementally: games already in the file are not downloaded again.
 
+Also writes data/nba/schedule.json: regular-season games for today and the
+next several days (US Eastern dates), for the Matchups view.
+
 Usage:
     python3 scripts/fetch_nba.py
 """
@@ -13,10 +16,14 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
+SCHEDULE_OUT = OUT.parent / "schedule.json"
 REGULAR_SEASON = 2
+SCHEDULE_DAYS = 7
+EASTERN = ZoneInfo("America/New_York")
 
 
 def get_json(url, retries=3):
@@ -110,6 +117,36 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, separators=(",", ":")))
     print(f"Added {new} games; {len(games) // 2} total in {OUT}")
+
+    write_schedule(season["displayName"])
+
+
+def write_schedule(season_name):
+    """Save upcoming regular-season games, grouped by US Eastern date."""
+    today = datetime.now(EASTERN).date()
+    days = []
+    for offset in range(SCHEDULE_DAYS):
+        day = today + timedelta(days=offset)
+        sb = get_json(f"{BASE}/scoreboard?dates={day.strftime('%Y%m%d')}")
+        matchups = []
+        for ev in sb.get("events", []):
+            if ev["season"]["type"] != REGULAR_SEASON:
+                continue
+            comp = ev["competitions"][0]
+            sides = {c["homeAway"]: c["team"]["abbreviation"] for c in comp["competitors"]}
+            matchups.append({
+                "gameId": ev["id"],
+                "start": ev["date"],
+                "away": sides.get("away"),
+                "home": sides.get("home"),
+                "state": ev["status"]["type"]["state"],  # pre, in, post
+                "detail": ev["status"]["type"].get("shortDetail", ""),
+            })
+        matchups.sort(key=lambda m: (m["start"], m["gameId"]))
+        days.append({"date": day.isoformat(), "games": matchups})
+        time.sleep(0.2)
+    SCHEDULE_OUT.write_text(json.dumps({"season": season_name, "days": days}, separators=(",", ":")))
+    print(f"Saved schedule for {len(days)} days in {SCHEDULE_OUT}")
 
 
 if __name__ == "__main__":

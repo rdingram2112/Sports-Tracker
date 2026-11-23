@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
-/* Layout: one working column. Header with the window picker, then a single sortable team table. */
+/* Layout: one working column. View menu + header, the shared window picker, then either the team table or a grid of matchup cards. */
 :root {
   --bg: #f5f6f8;
   --surface: #ffffff;
@@ -23,6 +23,8 @@
   --bad-bg: #f8e0dc;
   --bad-fg: #8f2b1e;
   --head-bg: #eef0f4;
+  --edge-bg: #fdf0e9;
+  --live: #c62828;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -32,6 +34,7 @@
     --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
     --accent: #f07a3e; --accent-ink: #1a0d05;
     --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
+    --edge-bg: #2a2019; --live: #ff6b6b;
     color-scheme: dark;
   }
 }
@@ -39,6 +42,7 @@
   --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
   --accent: #f07a3e; --accent-ink: #1a0d05;
   --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
+  --edge-bg: #2a2019; --live: #ff6b6b;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -53,12 +57,45 @@ body {
 .wrap {
   max-width: 1100px;
   margin: 0 auto;
-  padding-block: 28px 48px;
+  padding-block: 20px 48px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid;
   gap: 20px;
 }
+
+/* View menu */
+.topbar { display: flex; align-items: center; gap: 12px; }
+.view-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.view-select select {
+  appearance: none;
+  font: 600 16px var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 36px 7px 12px;
+  cursor: pointer;
+}
+.view-select::after {
+  content: "";
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
 header { display: grid; gap: 6px; }
 .eyebrow {
   font-family: var(--font-display);
@@ -92,7 +129,7 @@ h1 {
   font-size: 14px;
   color: var(--muted);
 }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
 .seg button {
   font: 600 15px var(--font-body);
   color: var(--fg);
@@ -116,8 +153,9 @@ h1 {
   background: var(--surface);
   color: var(--fg);
 }
-button:focus-visible, input:focus-visible, th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* Team stats table */
 .table-box {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -141,24 +179,28 @@ th button {
   align-items: center;
   gap: 4px;
 }
+th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 th .th-plain { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: 0.06em; }
 th .arrow { color: var(--accent); width: 0.8em; display: inline-block; }
 th small { display: block; font: 400 12px var(--font-body); color: var(--muted); text-transform: none; letter-spacing: 0; }
 th:first-child, td:first-child { text-align: left; }
+td.gp { color: var(--muted); }
+tbody tr:hover td { background: var(--head-bg); }
+
 .team { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-.team .logo { width: 28px; height: 28px; flex: none; }
-.team .logo img { width: 28px; height: 28px; object-fit: contain; display: block; }
-.team .logo .logo-dark { display: none; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .team .logo .logo-light { display: none; }
-  :root:not([data-theme="light"]) .team .logo .logo-dark { display: block; }
-}
-:root[data-theme="dark"] .team .logo .logo-light { display: none; }
-:root[data-theme="dark"] .team .logo .logo-dark { display: block; }
 .team .abbr { font-family: var(--font-display); font-size: 17px; width: 3.2em; }
 .team .name { font-weight: 400; color: var(--muted); }
-td.gp { color: var(--muted); }
-.cell { display: inline-flex; align-items: baseline; gap: 6px; }
+.logo { width: 28px; height: 28px; flex: none; }
+.logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo .logo-light { display: none; }
+  :root:not([data-theme="light"]) .logo .logo-dark { display: block; }
+}
+:root[data-theme="dark"] .logo .logo-light { display: none; }
+:root[data-theme="dark"] .logo .logo-dark { display: block; }
+
+.cell { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
 .rank {
   display: inline-block;
   min-width: 2.6em;
@@ -171,16 +213,112 @@ td.gp { color: var(--muted); }
 }
 .rank.good { background: var(--good-bg); color: var(--good-fg); }
 .rank.bad { background: var(--bad-bg); color: var(--bad-fg); }
-tbody tr:hover td { background: var(--head-bg); }
+
+/* Matchups */
+.days { display: flex; flex-wrap: wrap; gap: 8px; }
+.days button {
+  font: 600 14px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.days button small { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.days button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.days button[aria-pressed="true"] small { color: var(--bg); opacity: 0.75; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 0;
+}
+.card-time {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px 0;
+  font: 600 13px var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card-time .live { color: var(--live); }
+.card-teams {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.side.home { flex-direction: row-reverse; text-align: right; }
+.side .logo { width: 40px; height: 40px; }
+.side .who { display: grid; min-width: 0; }
+.side .abbr { font: 700 22px/1 var(--font-display); }
+.side .nm { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at { font: 600 15px var(--font-display); color: var(--muted); }
+.mrow {
+  display: grid;
+  grid-template-columns: 1fr 64px 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.mrow:last-child { border-bottom: 0; }
+.mrow .stat {
+  text-align: center;
+  font: 600 14px var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mrow .val { padding: 8px 14px; display: flex; }
+.mrow .val.away { justify-content: flex-start; }
+.mrow .val.home { justify-content: flex-end; }
+.mrow .val.edge { background: var(--edge-bg); font-weight: 600; }
+.mrow .val.edge.away { box-shadow: inset 3px 0 0 var(--accent); }
+.mrow .val.edge.home { box-shadow: inset -3px 0 0 var(--accent); }
+.mrow.gp .val { color: var(--muted); font-size: 13px; padding-block: 6px; }
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+}
 
 .notes { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
 .notes p { margin: 0; max-width: 75ch; }
-.error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; }
+.error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; display: inline-block; }
 @media (max-width: 640px) { .team .name { display: none; } }
+@media (max-width: 400px) {
+  .cards { grid-template-columns: 1fr; }
+  .mrow { grid-template-columns: 1fr 52px 1fr; }
+  .mrow .val { padding-inline: 10px; }
+}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div class="topbar">
+    <label class="view-select" for="view">
+      <span hidden>View</span>
+      <select id="view" aria-label="View">
+        <option value="stats">Team stats</option>
+        <option value="matchups">Matchups</option>
+      </select>
+    </label>
+  </div>
+
   <header>
     <div class="eyebrow" id="season">NBA</div>
     <h1 id="headline">Team stats over the last 10 games</h1>
@@ -201,16 +339,25 @@ tbody tr:hover td { background: var(--head-bg); }
     </label>
   </div>
 
-  <div class="table-box">
-    <table>
-      <thead><tr id="head-row"></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </div>
+  <section id="view-stats">
+    <div class="table-box">
+      <table>
+        <thead><tr id="head-row"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="view-matchups" hidden>
+    <div style="display:grid; gap:16px">
+      <div class="days" id="days" role="group" aria-label="Game day"></div>
+      <div class="cards" id="cards"></div>
+    </div>
+  </section>
 
   <div class="notes">
-    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest eFG%, 3P%, offensive rebounds and free throw attempts, and fewest turnovers. Green marks the top five, red the bottom five.</p>
-    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, and 3P% = 3PM ÷ 3PA, both totaled across the window. OREB, FTA and TOV are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Source: ESPN box scores.</p>
+    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest eFG%, 3P%, offensive rebounds and free throw attempts, and fewest turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
+    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, and 3P% = 3PM ÷ 3PA, both totaled across the window. OREB, FTA and TOV are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Source: ESPN box scores, updated every morning.</p>
   </div>
 </div>
 
@@ -222,12 +369,14 @@ const STATS = [
   { key: "fta", label: "FTA",  hint: "per game", higherBetter: true },
   { key: "tov", label: "TOV",  hint: "per game", higherBetter: false },
 ];
+const PRESETS = [5, 10, 15, 0];
 
-const state = { n: 10, sort: "efg", dir: null, data: null };
+const state = { view: "stats", n: 10, sort: "efg", dir: null, day: null, data: null, schedule: null };
 
 function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
 
+/* ---------- numbers ---------- */
 function aggregate(games, n) {
   const byTeam = {};
   for (const g of games) (byTeam[g.team] ||= []).push(g);
@@ -255,15 +404,43 @@ function rankAll(rows) {
       r[s.key + "Rank"] = better + 1;
     });
   }
+  return rows;
 }
 
-function render() {
-  const { data } = state;
-  if (!data) return;
-  const rows = aggregate(data.games, state.n);
-  rankAll(rows);
-  const total = rows.length;
+function currentRows() {
+  return rankAll(aggregate(state.data.games, state.n));
+}
 
+const fmt = (s, v) => s.pct ? v.toFixed(1) + "%" : v.toFixed(1);
+const rankClass = (rank, total) => rank <= 5 ? "good" : rank > total - 5 ? "bad" : "";
+const statCell = (s, r, total) => {
+  const rank = r[s.key + "Rank"];
+  return `<span class="cell">${fmt(s, r[s.key])}<span class="rank ${rankClass(rank, total)}">(${rank})</span></span>`;
+};
+const logo = (abbr, alt = "") =>
+  `<span class="logo"><img class="logo-light" src="assets/logos/nba/${abbr}.png" alt="${alt}" width="28" height="28"><img class="logo-dark" src="assets/logos/nba/${abbr}-dark.png" alt="${alt}" width="28" height="28"></span>`;
+const teamInfo = abbr => state.data.teams[abbr] || { name: abbr, short: abbr };
+
+/* ---------- dates ---------- */
+function easternToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return parts; // YYYY-MM-DD
+}
+function dayLabel(iso) {
+  const today = easternToday();
+  const d = new Date(iso + "T12:00:00");
+  const t = new Date(today + "T12:00:00");
+  const diff = Math.round((d - t) / 86400000);
+  const short = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  if (diff === 0) return { main: "Today", sub: short };
+  if (diff === 1) return { main: "Tomorrow", sub: short };
+  return { main: short, sub: "" };
+}
+
+/* ---------- team stats view ---------- */
+function renderStats() {
+  const rows = currentRows();
+  const total = rows.length;
   const stat = STATS.find(s => s.key === state.sort);
   const dir = state.dir ?? (stat ? "rank" : "asc");
   rows.sort((a, b) => {
@@ -272,11 +449,6 @@ function render() {
     return (dir === "rank" ? d : -d) || a.team.localeCompare(b.team);
   });
 
-  document.getElementById("headline").textContent = state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season";
-  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
-  const custom = document.getElementById("custom-n");
-  if (![5, 10, 15, 0].includes(state.n)) custom.value = state.n; else if (document.activeElement !== custom) custom.value = "";
-
   const arrow = k => state.sort === k ? (k === "team" ? (dir === "desc" ? "▼" : "▲") : (dir === "rank" ? "▲" : "▼")) : "";
   document.getElementById("head-row").innerHTML =
     `<th><button type="button" data-sort="team">Team <span class="arrow">${arrow("team")}</span></button></th>` +
@@ -284,31 +456,111 @@ function render() {
     STATS.map(s => `<th aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
 
   document.getElementById("rows").innerHTML = rows.map(r => {
-    const info = data.teams[r.team] || { name: r.team, logo: "" };
-    const cells = STATS.map(s => {
-      const rank = r[s.key + "Rank"];
-      const cls = rank <= 5 ? "good" : rank > total - 5 ? "bad" : "";
-      const val = s.pct ? r[s.key].toFixed(1) + "%" : r[s.key].toFixed(1);
-      return `<td><span class="cell">${val}<span class="rank ${cls}">(${rank})</span></span></td>`;
-    }).join("");
-    const logo = `assets/logos/nba/${r.team}`;
-    return `<tr><td><div class="team"><span class="logo"><img class="logo-light" src="${logo}.png" alt="" width="28" height="28"><img class="logo-dark" src="${logo}-dark.png" alt="" width="28" height="28"></span><span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
+    const info = teamInfo(r.team);
+    const cells = STATS.map(s => `<td>${statCell(s, r, total)}</td>`).join("");
+    return `<tr><td><div class="team">${logo(r.team)}<span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
   }).join("");
 }
 
-function setN(n) {
-  state.n = n;
-  save("st.n", n);
+/* ---------- matchups view ---------- */
+function gameDays() {
+  if (!state.schedule) return [];
+  const today = easternToday();
+  return state.schedule.days.filter(d => d.date >= today && d.games.length);
+}
+
+function renderMatchups() {
+  const daysEl = document.getElementById("days");
+  const cardsEl = document.getElementById("cards");
+  const days = gameDays();
+  if (!state.schedule) {
+    daysEl.innerHTML = "";
+    cardsEl.innerHTML = `<div class="empty">The schedule hasn't been downloaded yet. It's added by the daily update.</div>`;
+    return;
+  }
+  if (!days.length) {
+    daysEl.innerHTML = "";
+    cardsEl.innerHTML = `<div class="empty">No games on the schedule for the next few days.</div>`;
+    return;
+  }
+  if (!days.some(d => d.date === state.day)) state.day = days[0].date;
+
+  daysEl.innerHTML = days.map(d => {
+    const l = dayLabel(d.date);
+    return `<button type="button" data-day="${d.date}" aria-pressed="${d.date === state.day}">${l.main}${l.sub ? `<small>${l.sub}</small>` : ""}</button>`;
+  }).join("");
+
+  const rows = currentRows();
+  const byTeam = Object.fromEntries(rows.map(r => [r.team, r]));
+  const total = rows.length;
+  const day = days.find(d => d.date === state.day);
+
+  cardsEl.innerHTML = day.games.map(g => {
+    const a = byTeam[g.away], h = byTeam[g.home];
+    const ai = teamInfo(g.away), hi = teamInfo(g.home);
+    let when;
+    if (g.state === "pre") when = new Date(g.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    else if (g.state === "in") when = `<span class="live">Live · ${g.detail}</span>`;
+    else when = g.detail || "Final";
+
+    const statRows = STATS.map(s => {
+      if (!a || !h) return "";
+      const ar = a[s.key + "Rank"], hr = h[s.key + "Rank"];
+      const aEdge = ar < hr, hEdge = hr < ar;
+      return `<div class="mrow">
+        <div class="val away${aEdge ? " edge" : ""}">${statCell(s, a, total)}</div>
+        <div class="stat">${s.label}</div>
+        <div class="val home${hEdge ? " edge" : ""}">${statCell(s, h, total)}</div>
+      </div>`;
+    }).join("");
+    const gpRow = a && h ? `<div class="mrow gp"><div class="val away">${a.gp} games</div><div class="stat">GP</div><div class="val home">${h.gp} games</div></div>` : "";
+
+    return `<article class="card">
+      <div class="card-time"><span>${when}</span><span>${ai.short} at ${hi.short}</span></div>
+      <div class="card-teams">
+        <div class="side away">${logo(g.away, ai.name)}<div class="who"><span class="abbr">${g.away}</span><span class="nm">${ai.short || ai.name}</span></div></div>
+        <span class="at">@</span>
+        <div class="side home">${logo(g.home, hi.name)}<div class="who"><span class="abbr">${g.home}</span><span class="nm">${hi.short || hi.name}</span></div></div>
+      </div>
+      ${statRows}${gpRow}
+    </article>`;
+  }).join("");
+}
+
+/* ---------- shell ---------- */
+function render() {
+  if (!state.data) return;
+  const windowText = state.n > 0 ? `the last ${state.n} games` : "the full season";
+  document.getElementById("headline").textContent =
+    state.view === "matchups" ? `Matchups using ${windowText}` : (state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season");
+  document.getElementById("view").value = state.view;
+  document.getElementById("view-stats").hidden = state.view !== "stats";
+  document.getElementById("view-matchups").hidden = state.view !== "matchups";
+
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
+  const custom = document.getElementById("custom-n");
+  if (!PRESETS.includes(state.n)) custom.value = state.n;
+  else if (document.activeElement !== custom) custom.value = "";
+
+  if (state.view === "matchups") renderMatchups(); else renderStats();
+}
+
+function setView(v) {
+  state.view = v === "matchups" ? "matchups" : "stats";
+  const hash = state.view === "matchups" ? "#matchups" : "";
+  if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
   render();
 }
 
+document.getElementById("view").addEventListener("change", e => setView(e.target.value));
+window.addEventListener("hashchange", () => setView(location.hash === "#matchups" ? "matchups" : "stats"));
 document.querySelector(".seg").addEventListener("click", e => {
   const b = e.target.closest("button[data-n]");
-  if (b) setN(Number(b.dataset.n));
+  if (b) { state.n = Number(b.dataset.n); save("st.n", state.n); render(); }
 });
 document.getElementById("custom-n").addEventListener("input", e => {
   const n = Math.floor(Number(e.target.value));
-  if (n >= 1 && n <= 82) setN(n);
+  if (n >= 1 && n <= 82) { state.n = n; save("st.n", n); render(); }
 });
 document.getElementById("head-row").addEventListener("click", e => {
   const b = e.target.closest("button[data-sort]");
@@ -319,21 +571,29 @@ document.getElementById("head-row").addEventListener("click", e => {
   } else { state.sort = k; state.dir = null; }
   render();
 });
+document.getElementById("days").addEventListener("click", e => {
+  const b = e.target.closest("button[data-day]");
+  if (b) { state.day = b.dataset.day; render(); }
+});
 
 state.n = load("st.n", 10);
+state.view = location.hash === "#matchups" ? "matchups" : "stats";
 
-fetch("data/nba/games.json", { cache: "no-cache" })
-  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(data => {
+Promise.all([
+  fetch("data/nba/games.json", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+  fetch("data/nba/schedule.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null),
+])
+  .then(([data, schedule]) => {
     state.data = data;
+    state.schedule = schedule;
     const last = data.games.length ? new Date(data.games[data.games.length - 1].date) : null;
     document.getElementById("season").textContent = `NBA · ${data.season} regular season`;
     document.getElementById("updated").textContent = last
-      ? `${data.games.length / 2} games played. Includes games through ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`
+      ? `${data.games.length / 2} games played. Stats include games through ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`
       : "No games yet.";
     render();
   })
-  .catch(err => {
+  .catch(() => {
     document.getElementById("updated").innerHTML = `<span class="error">Couldn't load the game data file (data/nba/games.json). Run scripts/fetch_nba.py to create it, then reload.</span>`;
   });
 </script>
