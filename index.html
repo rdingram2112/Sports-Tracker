@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NBA Trailing Stats</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: one working column. Header with the window picker, then a single sortable team table. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --fg: #16202c;
+  --muted: #5d6877;
+  --line: #dde1e7;
+  --accent: #d4561c;
+  --accent-ink: #ffffff;
+  --good-bg: #dcf1e2;
+  --good-fg: #17613a;
+  --bad-bg: #f8e0dc;
+  --bad-fg: #8f2b1e;
+  --head-bg: #eef0f4;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
+    --accent: #f07a3e; --accent-ink: #1a0d05;
+    --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
+  --accent: #f07a3e; --accent-ink: #1a0d05;
+  --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 20px;
+}
+header { display: grid; gap: 6px; }
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 13px;
+  color: var(--accent);
+}
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 5vw, 42px);
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.sub { margin: 0; color: var(--muted); }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.controls .label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 14px;
+  color: var(--muted);
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button {
+  font: 600 15px var(--font-body);
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:hover:not([aria-pressed="true"]) { background: var(--head-bg); }
+.custom { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+.custom input {
+  width: 64px;
+  font: 600 15px var(--font-body);
+  font-variant-numeric: tabular-nums;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+}
+button:focus-visible, input:focus-visible, th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.table-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+tbody tr:last-child td { border-bottom: 0; }
+th { background: var(--head-bg); position: sticky; top: 0; }
+th button {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+th .th-plain { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: 0.06em; }
+th .arrow { color: var(--accent); width: 0.8em; display: inline-block; }
+th small { display: block; font: 400 12px var(--font-body); color: var(--muted); text-transform: none; letter-spacing: 0; }
+th:first-child, td:first-child { text-align: left; }
+.team { display: flex; align-items: baseline; gap: 10px; font-weight: 600; }
+.team .abbr { font-family: var(--font-display); font-size: 17px; width: 3.2em; }
+.team .name { font-weight: 400; color: var(--muted); }
+td.gp { color: var(--muted); }
+.cell { display: inline-flex; align-items: baseline; gap: 6px; }
+.rank {
+  display: inline-block;
+  min-width: 2.6em;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.rank.good { background: var(--good-bg); color: var(--good-fg); }
+.rank.bad { background: var(--bad-bg); color: var(--bad-fg); }
+tbody tr:hover td { background: var(--head-bg); }
+
+.notes { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.notes p { margin: 0; max-width: 75ch; }
+.error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; }
+@media (max-width: 640px) { .team .name { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow" id="season">NBA</div>
+    <h1 id="headline">Team stats over the last 10 games</h1>
+    <p class="sub" id="updated">Loading game data…</p>
+  </header>
+
+  <div class="controls">
+    <span class="label">Window</span>
+    <div class="seg" role="group" aria-label="Number of games">
+      <button type="button" data-n="5">Last 5</button>
+      <button type="button" data-n="10">Last 10</button>
+      <button type="button" data-n="15">Last 15</button>
+      <button type="button" data-n="0">Season</button>
+    </div>
+    <label class="custom" for="custom-n">or last
+      <input id="custom-n" type="number" min="1" max="82" inputmode="numeric" placeholder="X">
+      games
+    </label>
+  </div>
+
+  <div class="table-box">
+    <table>
+      <thead><tr id="head-row"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="notes">
+    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest eFG%, 3P%, offensive rebounds and free throw attempts, and fewest turnovers. Green marks the top five, red the bottom five.</p>
+    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, and 3P% = 3PM ÷ 3PA, both totaled across the window. OREB, FTA and TOV are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Source: ESPN box scores.</p>
+  </div>
+</div>
+
+<script>
+const STATS = [
+  { key: "efg", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true },
+  { key: "tp",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true },
+  { key: "oreb", label: "OREB", hint: "per game", higherBetter: true },
+  { key: "fta", label: "FTA",  hint: "per game", higherBetter: true },
+  { key: "tov", label: "TOV",  hint: "per game", higherBetter: false },
+];
+
+const state = { n: 10, sort: "efg", dir: null, data: null };
+
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
+function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
+
+function aggregate(games, n) {
+  const byTeam = {};
+  for (const g of games) (byTeam[g.team] ||= []).push(g);
+  return Object.entries(byTeam).map(([team, list]) => {
+    const slice = n > 0 ? list.slice(-n) : list;
+    const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, fta: 0, oreb: 0, tov: 0 };
+    for (const g of slice) for (const k in t) t[k] += g[k];
+    const gp = slice.length;
+    return {
+      team, gp,
+      efg: t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : 0,
+      tp: t.tpa ? t.tpm / t.tpa * 100 : 0,
+      oreb: t.oreb / gp,
+      fta: t.fta / gp,
+      tov: t.tov / gp,
+    };
+  });
+}
+
+function rankAll(rows) {
+  for (const s of STATS) {
+    const vals = rows.map(r => Math.round(r[s.key] * 10) / 10);
+    rows.forEach((r, i) => {
+      const better = vals.filter(v => s.higherBetter ? v > vals[i] : v < vals[i]).length;
+      r[s.key + "Rank"] = better + 1;
+    });
+  }
+}
+
+function render() {
+  const { data } = state;
+  if (!data) return;
+  const rows = aggregate(data.games, state.n);
+  rankAll(rows);
+  const total = rows.length;
+
+  const stat = STATS.find(s => s.key === state.sort);
+  const dir = state.dir ?? (stat ? "rank" : "asc");
+  rows.sort((a, b) => {
+    if (state.sort === "team") return a.team.localeCompare(b.team) * (dir === "desc" ? -1 : 1);
+    const d = a[state.sort + "Rank"] - b[state.sort + "Rank"];
+    return (dir === "rank" ? d : -d) || a.team.localeCompare(b.team);
+  });
+
+  document.getElementById("headline").textContent = state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season";
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
+  const custom = document.getElementById("custom-n");
+  if (![5, 10, 15, 0].includes(state.n)) custom.value = state.n; else if (document.activeElement !== custom) custom.value = "";
+
+  const arrow = k => state.sort === k ? (k === "team" ? (dir === "desc" ? "▼" : "▲") : (dir === "rank" ? "▲" : "▼")) : "";
+  document.getElementById("head-row").innerHTML =
+    `<th><button type="button" data-sort="team">Team <span class="arrow">${arrow("team")}</span></button></th>` +
+    `<th><span class="th-plain">GP</span><small>in window</small></th>` +
+    STATS.map(s => `<th aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
+
+  document.getElementById("rows").innerHTML = rows.map(r => {
+    const info = data.teams[r.team] || { name: r.team, logo: "" };
+    const cells = STATS.map(s => {
+      const rank = r[s.key + "Rank"];
+      const cls = rank <= 5 ? "good" : rank > total - 5 ? "bad" : "";
+      const val = s.pct ? r[s.key].toFixed(1) + "%" : r[s.key].toFixed(1);
+      return `<td><span class="cell">${val}<span class="rank ${cls}">(${rank})</span></span></td>`;
+    }).join("");
+    return `<tr><td><div class="team"><span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
+  }).join("");
+}
+
+function setN(n) {
+  state.n = n;
+  save("st.n", n);
+  render();
+}
+
+document.querySelector(".seg").addEventListener("click", e => {
+  const b = e.target.closest("button[data-n]");
+  if (b) setN(Number(b.dataset.n));
+});
+document.getElementById("custom-n").addEventListener("input", e => {
+  const n = Math.floor(Number(e.target.value));
+  if (n >= 1 && n <= 82) setN(n);
+});
+document.getElementById("head-row").addEventListener("click", e => {
+  const b = e.target.closest("button[data-sort]");
+  if (!b) return;
+  const k = b.dataset.sort;
+  if (state.sort === k) {
+    state.dir = k === "team" ? ((state.dir ?? "asc") === "asc" ? "desc" : "asc") : ((state.dir ?? "rank") === "rank" ? "worst" : "rank");
+  } else { state.sort = k; state.dir = null; }
+  render();
+});
+
+state.n = load("st.n", 10);
+
+fetch("data/nba/games.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(data => {
+    state.data = data;
+    const last = data.games.length ? new Date(data.games[data.games.length - 1].date) : null;
+    document.getElementById("season").textContent = `NBA · ${data.season} regular season`;
+    document.getElementById("updated").textContent = last
+      ? `${data.games.length / 2} games played. Includes games through ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`
+      : "No games yet.";
+    render();
+  })
+  .catch(err => {
+    document.getElementById("updated").innerHTML = `<span class="error">Couldn't load the game data file (data/nba/games.json). Run scripts/fetch_nba.py to create it, then reload.</span>`;
+  });
+</script>
+</body>
+</html>
