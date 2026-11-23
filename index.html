@@ -417,13 +417,14 @@ tbody tr:hover td { background: var(--head-bg); }
 .gd-toggle:hover { background: var(--bg); }
 .gd-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 480px) {
-  .box { font-size: 13px; }
-  .box th, .box td { padding: 6px 4px; }
-  .box th:first-child, .box td:first-child { padding-left: 8px; }
-  .box th:last-child, .box td:last-child { padding-right: 8px; }
-  .box .bp { gap: 6px; }
-  .box .bp .shot { width: 22px; height: 22px; }
-  .box .bp .bn { max-width: 92px; }
+  .box { font-size: 12.5px; letter-spacing: -0.01em; }
+  .box th, .box td { padding: 6px 3px; }
+  .box th { font-size: 11px; letter-spacing: 0.02em; }
+  .box th:first-child, .box td:first-child { padding-left: 6px; }
+  .box th:last-child, .box td:last-child { padding-right: 6px; }
+  .box .bp { gap: 5px; }
+  .box .bp .shot { width: 20px; height: 20px; }
+  .box .bp .bn { max-width: 74px; }
   .gd-toggle { padding: 6px 8px; font-size: 12px; }
   /* Buttons get their own row above the score so nothing pushes the popup off screen */
   .gd-head { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
@@ -1405,6 +1406,7 @@ const BOX_BASIC = [
   { key: "min", label: "MIN" },
   { key: "fg", label: "FG", made: "fgm", att: "fga" },
   { key: "tp", label: "3PT", made: "tpm", att: "tpa" },
+  { key: "ft", label: "FT", made: "ftm", att: "fta" },
   { key: "pts", label: "PTS" },
   { key: "reb", label: "REB" },
   { key: "ast", label: "AST" },
@@ -1415,7 +1417,7 @@ const BOX_EXTRA = [
   { key: "tov", label: "TOV" },
   { key: "pf", label: "PF" },
 ];
-const BOX_SUM = ["min", "fgm", "fga", "tpm", "tpa", "pts", "reb", "ast", "stl", "blk", "tov", "pf"];
+const BOX_SUM = ["min", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "pts", "reb", "ast", "stl", "blk", "tov", "pf"];
 const box = { gameId: null, timer: null, data: null, all: load("st.boxAll", false) === true };
 const boxCols = () => box.all ? [...BOX_BASIC, ...BOX_EXTRA] : BOX_BASIC;
 
@@ -1436,9 +1438,9 @@ function parseBox(json) {
       const who = { id: ath.id, name: ath.displayName || ath.shortName || "", short: ath.shortName || ath.displayName || "", pos: ath.position?.abbreviation || "", starter: !!a.starter };
       const stats = a.stats || [];
       if (a.didNotPlay || !stats.length) { dnp.push({ ...who, reason: a.reason || "" }); continue; }
-      const [fgm, fga] = pair(stats, "FG"), [tpm, tpa] = pair(stats, "3PT");
+      const [fgm, fga] = pair(stats, "FG"), [tpm, tpa] = pair(stats, "3PT"), [ftm, fta] = pair(stats, "FT");
       played.push({ ...who, min: num(stats, "MIN"), pts: num(stats, "PTS"), reb: num(stats, "REB"),
-        ast: num(stats, "AST"), stl: num(stats, "STL"), blk: num(stats, "BLK"), tov: num(stats, "TO"), pf: num(stats, "PF"), fgm, fga, tpm, tpa });
+        ast: num(stats, "AST"), stl: num(stats, "STL"), blk: num(stats, "BLK"), tov: num(stats, "TO"), pf: num(stats, "PF"), fgm, fga, tpm, tpa, ftm, fta });
     }
     return { abbr: block.team?.abbreviation, played, dnp };
   });
