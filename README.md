@@ -14,7 +14,7 @@ Percentages are totaled across the window rather than averaged game by game. Reg
 
 ### Updating the data
 
-A GitHub Action (`.github/workflows/update-nba.yml`) runs the fetch script every morning at 6:23am Eastern and commits any new games. You can also run it by hand from the repository's **Actions** tab ("Update NBA stats" → **Run workflow**).
+A GitHub Action (`.github/workflows/update-nba.yml`) runs the fetch script every morning at 6:23am Eastern, commits any new games, and republishes the site on GitHub Pages (`.github/workflows/pages.yml`, which also runs on every push to `main`). You can also run it by hand from the repository's **Actions** tab ("Update NBA stats" → **Run workflow**).
 
 To run it yourself:
 

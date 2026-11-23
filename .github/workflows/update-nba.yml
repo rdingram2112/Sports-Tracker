@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: update-nba
@@ -38,3 +40,7 @@ jobs:
           git add data/
           git commit -m "Update NBA stats $(date -u +%Y-%m-%d)"
           git push
+
+  publish:
+    needs: update
+    uses: ./.github/workflows/pages.yml
