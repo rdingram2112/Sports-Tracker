@@ -157,13 +157,20 @@ h1 {
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Team stats table */
+/* The table box has two modes, picked in script after each render:
+   .fits  — the whole table fits, so it doesn't scroll on its own and the header sticks to the top of the window.
+   default — the table is wider than the screen, so the box scrolls both ways (header and team column frozen inside it). */
 .table-box {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  overflow-x: auto;
+  overflow: auto;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
 }
-table { border-collapse: collapse; width: 100%; min-width: 1220px; font-variant-numeric: tabular-nums; }
+.table-box.fits { overflow: clip; max-height: none; }
+.table-box.fits th { top: env(safe-area-inset-top, 0px); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
 th.grp, td.grp { border-left: 2px solid var(--line); }
 
 /* Click a team to see its games */
@@ -196,9 +203,13 @@ tbody tr.game-row:hover td { background: var(--bg); }
 .result.w { color: var(--good-fg); }
 .result.l { color: var(--bad-fg); }
 @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
-th, td { padding: 9px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th, td { padding: 9px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 tbody tr:last-child td { border-bottom: 0; }
-th { background: var(--head-bg); position: sticky; top: 0; }
+th { background: var(--head-bg); position: sticky; top: 0; z-index: 2; }
+th:first-child, td:first-child { padding-left: 14px; position: sticky; left: 0; z-index: 1; }
+th:first-child { z-index: 3; }
+td { background: var(--surface); }
+.table-box:not(.fits) td:first-child { box-shadow: inset -1px 0 0 var(--line); }
 th button {
   all: unset;
   cursor: pointer;
@@ -634,8 +645,17 @@ function render() {
   if (!PRESETS.includes(state.n)) custom.value = state.n;
   else if (document.activeElement !== custom) custom.value = "";
 
-  if (state.view === "matchups") renderMatchups(); else renderStats();
+  if (state.view === "matchups") renderMatchups(); else { renderStats(); updateFit(); }
 }
+
+// If the whole table fits on screen, let the header stick to the window; otherwise scroll inside the box.
+function updateFit() {
+  const box = document.querySelector(".table-box");
+  const table = box.querySelector("table");
+  box.classList.toggle("fits", table.offsetWidth <= box.clientWidth + 1);
+}
+window.addEventListener("resize", () => { if (state.view === "stats" && state.data) updateFit(); });
+document.fonts?.ready.then(() => { if (state.view === "stats" && state.data) updateFit(); });
 
 function setView(v) {
   state.view = v === "matchups" ? "matchups" : "stats";
