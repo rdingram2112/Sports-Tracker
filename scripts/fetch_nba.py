@@ -23,6 +23,7 @@ OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
 SCHEDULE_OUT = OUT.parent / "schedule.json"
 REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
+REQUIRED_FIELDS = ("pts", "stl", "blk")
 EASTERN = ZoneInfo("America/New_York")
 
 
@@ -57,14 +58,16 @@ def parse_team(box_team):
         "ftm": ftm, "fta": fta,
         "oreb": int(stats["offensiveRebounds"]),
         "tov": int(tov),
+        "stl": int(stats["steals"]),
+        "blk": int(stats["blocks"]),
     }
 
 
 def main():
     existing = json.loads(OUT.read_text()) if OUT.exists() else {"teams": {}, "games": []}
     teams = existing["teams"]
-    # Games saved before points were recorded are dropped and downloaded again.
-    games = [g for g in existing["games"] if "pts" in g]
+    # Games saved before a field was added are dropped and downloaded again.
+    games = [g for g in existing["games"] if all(k in g for k in REQUIRED_FIELDS)]
     have = {g["gameId"] for g in games}
 
     league = get_json(f"{BASE}/scoreboard")["leagues"][0]
