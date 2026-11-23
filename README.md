@@ -17,12 +17,12 @@ Percentages are totaled across the window rather than averaged game by game. Reg
 Use the menu at the top left to switch views (each has its own link):
 
 - **Team stats** (`/`): the table above. Click a team to see its games in the window.
-- **Matchups** (`#matchups`): each upcoming game with both teams' stats side by side.
+- **Matchups** (`#matchups`): each upcoming game with both teams' records, the betting line (spread, over/under, moneyline) and stats side by side.
 - **Players** (`#players`): player leaders in MIN, eFG%, PTS, REB, OREB, AST, STL, BLK and TOV over the last week, 2 weeks, month or season, as totals or per game. Per game lists players who played at least half of their team's games in that period, so injured players drop off. Click a player for a game-by-game bar chart of any stat with season and recent averages. Headshots load from ESPN.
 
 ### Updating the data
 
-A GitHub Action (`.github/workflows/update-nba.yml`) runs the fetch script every morning at 6:23am Eastern, commits any new games, and asks GitHub Pages to rebuild the site. Pages publishes straight from the `main` branch (Settings → Pages → Deploy from a branch → `main` / root), so any push to `main` also updates the site. You can also run it by hand from the repository's **Actions** tab ("Update NBA stats" → **Run workflow**).
+A GitHub Action (`.github/workflows/update-nba.yml`) runs the fetch script every morning at 6:23am Eastern (and again at 3:23pm Eastern to refresh betting lines), commits any new games, and asks GitHub Pages to rebuild the site. Pages publishes straight from the `main` branch (Settings → Pages → Deploy from a branch → `main` / root), so any push to `main` also updates the site. You can also run it by hand from the repository's **Actions** tab ("Update NBA stats" → **Run workflow**).
 
 To run it yourself:
 

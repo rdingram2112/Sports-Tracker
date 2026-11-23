@@ -215,19 +215,57 @@ def write_schedule(season_name):
                 continue
             comp = ev["competitions"][0]
             sides = {c["homeAway"]: c["team"]["abbreviation"] for c in comp["competitors"]}
+            records = {c["homeAway"]: overall_record(c) for c in comp["competitors"]}
             matchups.append({
                 "gameId": ev["id"],
                 "start": ev["date"],
                 "away": sides.get("away"),
                 "home": sides.get("home"),
+                "awayRecord": records.get("away"),
+                "homeRecord": records.get("home"),
                 "state": ev["status"]["type"]["state"],  # pre, in, post
                 "detail": ev["status"]["type"].get("shortDetail", ""),
+                "line": betting_line(comp),
             })
         matchups.sort(key=lambda m: (m["start"], m["gameId"]))
         days.append({"date": day.isoformat(), "games": matchups})
         time.sleep(0.2)
     SCHEDULE_OUT.write_text(json.dumps({"season": season_name, "days": days}, separators=(",", ":")))
     print(f"Saved schedule for {len(days)} days in {SCHEDULE_OUT}")
+
+
+def overall_record(competitor):
+    """The team's season record, like "10-7"."""
+    recs = competitor.get("records") or []
+    for r in recs:
+        if r.get("type") == "total" or r.get("name", "").lower() == "overall":
+            return r.get("summary")
+    return recs[0].get("summary") if recs else None
+
+
+def betting_line(comp):
+    """Spread, over/under and moneylines from the first sportsbook ESPN lists, or None if not posted."""
+    odds = comp.get("odds") or []
+    if not odds:
+        return None
+    o = odds[0]
+
+    def moneyline(side):
+        block = (o.get("moneyline") or {}).get(side) or {}
+        for when in ("close", "current", "open"):
+            value = (block.get(when) or {}).get("odds")
+            if value:
+                return value
+        return None
+
+    line = {
+        "book": (o.get("provider") or {}).get("name"),
+        "spread": o.get("details"),  # e.g. "MEM -2.5" or "EVEN"
+        "total": o.get("overUnder"),
+        "mlAway": moneyline("away"),
+        "mlHome": moneyline("home"),
+    }
+    return line if any(line[k] for k in ("spread", "total", "mlAway", "mlHome")) else None
 
 
 if __name__ == "__main__":

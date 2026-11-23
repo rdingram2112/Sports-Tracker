@@ -4,6 +4,8 @@ on:
   schedule:
     # Every day at 11:23 UTC (6:23am Eastern), after the last West Coast games finish.
     - cron: "23 11 * * *"
+    # And at 20:23 UTC (3:23pm Eastern) to pick up betting lines posted or moved during the day.
+    - cron: "23 20 * * *"
   workflow_dispatch: # lets you run it by hand from the Actions tab
 
 permissions:

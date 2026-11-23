@@ -313,6 +313,26 @@ tbody tr:hover td { background: var(--head-bg); }
 .side .abbr { font: 700 22px/1 var(--font-display); }
 .side .nm { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .at { font: 600 15px var(--font-display); color: var(--muted); }
+.side .rec { font: 600 13px var(--font-body); font-variant-numeric: tabular-nums; color: var(--fg); }
+.line-strip {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 4px 18px;
+  padding: 8px 14px;
+  background: var(--head-bg);
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.line-strip > div { display: grid; gap: 1px; min-width: 0; }
+.line-strip .lk {
+  font: 600 11px var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.line-strip b { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.line-strip > div:last-child { text-align: right; }
+.line-strip.none { display: block; color: var(--muted); font-size: 13px; text-align: center; }
 .mrow {
   display: grid;
   grid-template-columns: 1fr 64px 1fr;
@@ -553,7 +573,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     <p>Click a team in Team stats to see each game in the selected window, most recent first.</p>
     <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest net rating, offensive rating, eFG%, 3P%, 3P rate, offensive rebounds, free throw attempts, FT%, steals and blocks, and lowest defensive rating and turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
     <p>Offensive and defensive ratings are points scored and allowed per 100 possessions; net rating is the difference. Possessions are estimated as FGA + 0.44 × FTA − OREB + TOV, averaged between the two teams, so values can differ slightly from NBA.com's.</p>
-    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, 3P% = 3PM ÷ 3PA, 3P rate = 3PA ÷ FGA (the share of shots that are threes), and FT% = FTM ÷ FTA, all totaled across the window. OREB, FTA, TOV, STL and BLK are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Source: ESPN box scores, updated every morning.</p>
+    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, 3P% = 3PM ÷ 3PA, 3P rate = 3PA ÷ FGA (the share of shots that are threes), and FT% = FTM ÷ FTA, all totaled across the window. OREB, FTA, TOV, STL and BLK are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Records and betting lines (spread, over/under and moneyline, from the sportsbook ESPN lists, usually DraftKings) are refreshed each morning and again mid-afternoon Eastern, so they are snapshots, not live odds; a game shows "Line not posted yet" until one is available. Source: ESPN box scores, updated every morning.</p>
   </div>
 </div>
 
@@ -751,6 +771,19 @@ function gameDays() {
   return state.schedule.days.filter(d => d.date >= today && d.games.length);
 }
 
+// Spread, over/under and moneylines for a game, or a note that no line is posted yet.
+function lineStrip(g) {
+  const L = g.line;
+  if (!L) return `<div class="line-strip none">${g.state === "pre" ? "Line not posted yet" : "No line"}</div>`;
+  const nice = s => String(s).replace(/-/g, "−");
+  const ml = [L.mlAway && `${g.away} ${nice(L.mlAway)}`, L.mlHome && `${g.home} ${nice(L.mlHome)}`].filter(Boolean).join(" · ");
+  return `<div class="line-strip" title="${L.book ? L.book + " line, " : ""}as of the last update">
+    <div><span class="lk">Spread</span><b>${L.spread ? nice(L.spread) : "—"}</b></div>
+    <div><span class="lk">O/U</span><b>${L.total ?? "—"}</b></div>
+    <div><span class="lk">Moneyline</span><b>${ml || "—"}</b></div>
+  </div>`;
+}
+
 function renderMatchups() {
   const daysEl = document.getElementById("days");
   const cardsEl = document.getElementById("cards");
@@ -797,13 +830,15 @@ function renderMatchups() {
     }).join("");
     const gpRow = a && h ? `<div class="mrow gp"><div class="val away">${a.gp} games</div><div class="stat">GP</div><div class="val home">${h.gp} games</div></div>` : "";
 
+    const rec = r => r ? `<span class="rec">${r}</span>` : "";
     return `<article class="card">
       <div class="card-time"><span>${when}</span><span>${ai.short} at ${hi.short}</span></div>
       <div class="card-teams">
-        <div class="side away">${logo(g.away, ai.name)}<div class="who"><span class="abbr">${g.away}</span><span class="nm">${ai.short || ai.name}</span></div></div>
+        <div class="side away">${logo(g.away, ai.name)}<div class="who"><span class="abbr">${g.away}</span><span class="nm">${ai.short || ai.name}</span>${rec(g.awayRecord)}</div></div>
         <span class="at">@</span>
-        <div class="side home">${logo(g.home, hi.name)}<div class="who"><span class="abbr">${g.home}</span><span class="nm">${hi.short || hi.name}</span></div></div>
+        <div class="side home">${logo(g.home, hi.name)}<div class="who"><span class="abbr">${g.home}</span><span class="nm">${hi.short || hi.name}</span>${rec(g.homeRecord)}</div></div>
       </div>
+      ${lineStrip(g)}
       ${statRows}${gpRow}
     </article>`;
   }).join("");
