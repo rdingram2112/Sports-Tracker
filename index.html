@@ -145,7 +145,16 @@ th .th-plain { font-family: var(--font-display); font-weight: 600; font-size: 15
 th .arrow { color: var(--accent); width: 0.8em; display: inline-block; }
 th small { display: block; font: 400 12px var(--font-body); color: var(--muted); text-transform: none; letter-spacing: 0; }
 th:first-child, td:first-child { text-align: left; }
-.team { display: flex; align-items: baseline; gap: 10px; font-weight: 600; }
+.team { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.team .logo { width: 28px; height: 28px; flex: none; }
+.team .logo img { width: 28px; height: 28px; object-fit: contain; display: block; }
+.team .logo .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .team .logo .logo-light { display: none; }
+  :root:not([data-theme="light"]) .team .logo .logo-dark { display: block; }
+}
+:root[data-theme="dark"] .team .logo .logo-light { display: none; }
+:root[data-theme="dark"] .team .logo .logo-dark { display: block; }
 .team .abbr { font-family: var(--font-display); font-size: 17px; width: 3.2em; }
 .team .name { font-weight: 400; color: var(--muted); }
 td.gp { color: var(--muted); }
@@ -282,7 +291,8 @@ function render() {
       const val = s.pct ? r[s.key].toFixed(1) + "%" : r[s.key].toFixed(1);
       return `<td><span class="cell">${val}<span class="rank ${cls}">(${rank})</span></span></td>`;
     }).join("");
-    return `<tr><td><div class="team"><span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
+    const logo = `assets/logos/nba/${r.team}`;
+    return `<tr><td><div class="team"><span class="logo"><img class="logo-light" src="${logo}.png" alt="" width="28" height="28"><img class="logo-dark" src="${logo}-dark.png" alt="" width="28" height="28"></span><span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></div></td><td class="gp">${r.gp}</td>${cells}</tr>`;
   }).join("");
 }
 

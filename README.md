@@ -20,6 +20,12 @@ python3 scripts/fetch_nba.py
 
 This pulls final box scores from ESPN's public API into `data/nba/games.json`. It only downloads games it doesn't already have.
 
+Team logos live in `assets/logos/nba/` (a light and a dark version per team). To re-download them:
+
+```bash
+python3 scripts/fetch_logos.py
+```
+
 ### Viewing locally
 
 ```bash
