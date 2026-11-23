@@ -46,6 +46,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -418,7 +419,7 @@ tbody tr:hover td { background: var(--head-bg); }
     <p class="sub" id="updated">Loading game data…</p>
   </header>
 
-  <div class="controls">
+  <div class="controls" id="game-window">
     <span class="label">Window</span>
     <div class="seg" role="group" aria-label="Number of games">
       <button type="button" data-n="5">Last 5</button>
@@ -450,6 +451,15 @@ tbody tr:hover td { background: var(--head-bg); }
 
   <section id="view-players" hidden>
     <div class="pview">
+      <div class="controls">
+        <span class="label">Window</span>
+        <div class="seg pspan" role="group" aria-label="Time period">
+          <button type="button" data-pspan="7">Last week</button>
+          <button type="button" data-pspan="14">Last 2 weeks</button>
+          <button type="button" data-pspan="30">Last month</button>
+          <button type="button" data-pspan="0">Season</button>
+        </div>
+      </div>
       <div class="ptools">
         <div class="seg pmode" role="group" aria-label="Totals or per game">
           <button type="button" data-pmode="per">Per game</button>
@@ -472,8 +482,8 @@ tbody tr:hover td { background: var(--head-bg); }
   </section>
 
   <div class="notes" id="notes-players" hidden>
-    <p>For players, "last X games" means each player's own last X games played, so games they missed don't count against them. Per game lists only players who played in at least half the window (half of their team's games for the full season); Totals lists everyone. Click a column to sort by it, and click again to reverse.</p>
-    <p>Team is the player's team in his most recent game in the window. Photos and box scores come from ESPN, updated every morning.</p>
+    <p>Time periods count back from the most recent game day: last week is the last 7 days, last 2 weeks the last 14, and last month the last 30. Per game lists only players who played in at least half of their team's games in the period, so players who have been out injured drop off; Totals lists everyone who played. Click a column to sort by it, and click again to reverse.</p>
+    <p>Team is the player's team in his most recent game in the period. Photos and box scores come from ESPN, updated every morning.</p>
   </div>
 
   <div class="notes" id="notes-team">
@@ -506,7 +516,7 @@ const state = {
   view: "stats", n: 10, sort: "net", dir: null, expanded: null, day: null, data: null, schedule: null,
   // Players view
   players: null, playersLoading: false, playersError: false,
-  pmode: "per", psort: "pts", pdir: "desc", pall: false, pq: "",
+  pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
 };
 const VIEWS = ["stats", "matchups", "players"];
 const PSTATS = [
@@ -750,32 +760,50 @@ const initials = name => name.split(/\s+/).filter(w => /^[A-Za-z]/.test(w)).slic
 const headshot = (id, name) =>
   `<span class="shot" data-init="${initials(name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${id}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="40" height="40"></span>`;
 
+// A game's calendar day in US Eastern time, as YYYY-MM-DD.
+const etDay = iso => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+const shiftDay = (day, delta) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };
+
+// The first game day included in the Players time period (null = whole season).
+function periodStart() {
+  if (!state.pspan) return null;
+  const games = state.data.games;
+  const lastDay = etDay(games[games.length - 1].date);
+  return shiftDay(lastDay, -(state.pspan - 1));
+}
+
 function playerLeaders() {
   const { info, byPlayer, col } = state.players;
-  const n = state.n;
   const per = state.pmode === "per";
-  // Per game needs at least half the window; for the full season, half of the most games any team has played.
+  const start = periodStart();
+
+  // Each game's day, and how many games each team played in the period.
+  const gameDay = {};
   const teamGames = {};
-  for (const g of state.data.games) teamGames[g.team] = (teamGames[g.team] || 0) + 1;
-  const maxTeamGames = Math.max(...Object.values(teamGames));
-  const minGP = per ? Math.ceil((n > 0 ? n : maxTeamGames) / 2) : 1;
+  for (const g of state.data.games) {
+    const day = gameDay[g.gameId] ||= etDay(g.date);
+    if (!start || day >= start) teamGames[g.team] = (teamGames[g.team] || 0) + 1;
+  }
 
   let list = [];
   for (const [pid, lines] of Object.entries(byPlayer)) {
-    const slice = n > 0 ? lines.slice(-n) : lines;
+    const slice = start ? lines.filter(row => gameDay[row[col.gameId]] >= start) : lines;
     const gp = slice.length;
-    if (gp < minGP) continue;
+    if (!gp) continue;
+    const team = slice[gp - 1][col.team];
+    // Per game: must have played at least half of his team's games in the period.
+    if (per && gp < Math.ceil((teamGames[team] || 0) / 2)) continue;
     const tot = Object.fromEntries(PSTATS.map(s => [s.key, 0]));
     for (const row of slice) for (const s of PSTATS) tot[s.key] += row[col[s.key]];
     const p = info[pid] || { name: pid, short: pid };
     const vals = per ? Object.fromEntries(PSTATS.map(s => [s.key, tot[s.key] / gp])) : tot;
-    list.push({ id: pid, name: p.name, pos: p.pos || "", team: slice[slice.length - 1][col.team], gp, ...vals });
+    list.push({ id: pid, name: p.name, pos: p.pos || "", team, gp, teamGp: teamGames[team] || 0, ...vals });
   }
   const k = state.psort;
   const sign = state.pdir === "desc" ? -1 : 1;
   list.sort((a, b) => k === "name" ? a.name.localeCompare(b.name) * sign : ((a[k] - b[k]) * sign || b.pts - a.pts || a.name.localeCompare(b.name)));
   list.forEach((r, i) => { r.rank = i + 1; });
-  return { list, minGP };
+  return { list, start };
 }
 
 function renderPlayers() {
@@ -792,10 +820,12 @@ function renderPlayers() {
   }
 
   const per = state.pmode === "per";
-  const { list, minGP } = playerLeaders();
-  document.getElementById("p-qual").textContent = per
-    ? `Players with at least ${minGP} game${minGP === 1 ? "" : "s"} played · ${list.length} players`
-    : `${list.length} players`;
+  const { list, start } = playerLeaders();
+  document.querySelectorAll(".pspan button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.pspan) === state.pspan)));
+  const since = start ? `Games since ${new Date(start + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ` : "";
+  document.getElementById("p-qual").textContent = since + (per
+    ? `players in at least half their team's games · ${list.length} players`
+    : `${list.length} players`);
 
   const arrow = key => state.psort === key ? (state.pdir === "desc" ? "▼" : "▲") : "";
   head.innerHTML =
@@ -829,8 +859,9 @@ function render() {
   const headlines = {
     stats: state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season",
     matchups: `Matchups using ${windowText}`,
-    players: state.n > 0 ? `Player leaders over their last ${state.n} games` : "Player leaders for the full season",
+    players: { 7: "Player leaders over the last week", 14: "Player leaders over the last 2 weeks", 30: "Player leaders over the last month" }[state.pspan] || "Player leaders for the full season",
   };
+  document.getElementById("game-window").hidden = state.view === "players";
   document.getElementById("headline").textContent = headlines[state.view];
   document.getElementById("view").value = state.view;
   for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = state.view !== v;
@@ -868,6 +899,10 @@ function setView(v) {
 
 document.getElementById("view").addEventListener("change", e => setView(e.target.value));
 window.addEventListener("hashchange", () => setView(viewFromHash()));
+document.querySelector(".pspan").addEventListener("click", e => {
+  const b = e.target.closest("button[data-pspan]");
+  if (b) { state.pspan = Number(b.dataset.pspan); save("st.pspan", state.pspan); render(); }
+});
 document.querySelector(".pmode").addEventListener("click", e => {
   const b = e.target.closest("button[data-pmode]");
   if (b) { state.pmode = b.dataset.pmode; render(); }
@@ -919,6 +954,7 @@ document.getElementById("days").addEventListener("click", e => {
 
 state.n = load("st.n", 10);
 state.view = viewFromHash();
+state.pspan = [7, 14, 30, 0].includes(load("st.pspan", 14)) ? load("st.pspan", 14) : 14;
 
 Promise.all([
   fetch("data/nba/games.json", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),

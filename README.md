@@ -18,7 +18,7 @@ Use the menu at the top left to switch views (each has its own link):
 
 - **Team stats** (`/`): the table above. Click a team to see its games in the window.
 - **Matchups** (`#matchups`): each upcoming game with both teams' stats side by side.
-- **Players** (`#players`): player leaders in MIN, PTS, REB, AST, STL, BLK and TOV over each player's last X games, as totals or per game. Per game lists players who played at least half the window. Headshots load from ESPN.
+- **Players** (`#players`): player leaders in MIN, PTS, REB, AST, STL, BLK and TOV over the last week, 2 weeks, month or season, as totals or per game. Per game lists players who played at least half of their team's games in that period, so injured players drop off. Headshots load from ESPN.
 
 ### Updating the data
 
