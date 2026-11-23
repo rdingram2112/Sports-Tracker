@@ -9,7 +9,6 @@ on:
 permissions:
   contents: write
   pages: write
-  id-token: write
 
 concurrency:
   group: update-nba
@@ -41,6 +40,9 @@ jobs:
           git commit -m "Update NBA stats $(date -u +%Y-%m-%d)"
           git push
 
-  publish:
-    needs: update
-    uses: ./.github/workflows/pages.yml
+      # GitHub Pages publishes from the main branch. Pushes made by this job
+      # don't always start a Pages build on their own, so ask for one.
+      - name: Rebuild site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
