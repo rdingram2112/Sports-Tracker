@@ -55,7 +55,7 @@ body {
   line-height: 1.45;
 }
 .wrap {
-  max-width: 1300px;
+  max-width: 1400px;
   margin: 0 auto;
   padding-block: 20px 48px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -194,16 +194,16 @@ tr.game-row td {
 }
 tr.game-row.last td { border-bottom: 1px solid var(--line); }
 tbody tr.game-row:hover td { background: var(--bg); }
-.game-info { display: flex; align-items: center; gap: 8px; padding-left: 17px; }
+.game-info { display: flex; align-items: center; gap: 6px; padding-left: 4px; }
 .game-info .logo { width: 20px; height: 20px; }
-.gdate { color: var(--muted); width: 7.5em; }
+.gdate { color: var(--muted); width: 4.2em; }
 .vs { color: var(--muted); width: 1.4em; text-align: center; }
 .gopp { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
-.result { font-weight: 600; white-space: nowrap; }
+.result { font-weight: 600; font-size: 13px; white-space: nowrap; }
 .result.w { color: var(--good-fg); }
 .result.l { color: var(--bad-fg); }
 @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
-th, td { padding: 9px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th, td { padding: 9px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 tbody tr:last-child td { border-bottom: 0; }
 th { background: var(--head-bg); position: sticky; top: 0; z-index: 2; }
 th:first-child, td:first-child { padding-left: 14px; position: sticky; left: 0; z-index: 1; }
@@ -244,14 +244,14 @@ tbody tr:hover td { background: var(--head-bg); }
 :root[data-theme="dark"] .logo .logo-light { display: none; }
 :root[data-theme="dark"] .logo .logo-dark { display: block; }
 
-.cell { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.cell { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
 .rank {
   display: inline-block;
-  min-width: 2.6em;
+  min-width: 2.4em;
   text-align: center;
   font-size: 13px;
   font-weight: 600;
-  padding: 1px 5px;
+  padding: 1px 3px;
   border-radius: 5px;
   color: var(--muted);
 }
@@ -343,7 +343,7 @@ tbody tr:hover td { background: var(--head-bg); }
 .notes { color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
 .notes p { margin: 0; max-width: 75ch; }
 .error { color: var(--bad-fg); background: var(--bad-bg); padding: 12px 14px; border-radius: 8px; display: inline-block; }
-@media (max-width: 640px) { .team .name { display: none; } }
+@media (max-width: 1400px) { .team .name { display: none; } }
 @media (max-width: 400px) {
   .cards { grid-template-columns: 1fr; }
   .mrow { grid-template-columns: 1fr 52px 1fr; }
@@ -401,9 +401,9 @@ tbody tr:hover td { background: var(--head-bg); }
 
   <div class="notes">
     <p>Click a team in Team stats to see each game in the selected window, most recent first.</p>
-    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest net rating, offensive rating, eFG%, 3P%, offensive rebounds, free throw attempts, steals and blocks, and lowest defensive rating and turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
+    <p>Each stat shows the team's value with its league rank in parentheses for the selected window. Rank 1 is best: highest net rating, offensive rating, eFG%, 3P%, 3P rate, offensive rebounds, free throw attempts, FT%, steals and blocks, and lowest defensive rating and turnovers. Green marks the top five, red the bottom five. In matchups, the shaded side has the better number.</p>
     <p>Offensive and defensive ratings are points scored and allowed per 100 possessions; net rating is the difference. Possessions are estimated as FGA + 0.44 × FTA − OREB + TOV, averaged between the two teams, so values can differ slightly from NBA.com's.</p>
-    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, and 3P% = 3PM ÷ 3PA, both totaled across the window. OREB, FTA, TOV, STL and BLK are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Source: ESPN box scores, updated every morning.</p>
+    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, 3P% = 3PM ÷ 3PA, 3P rate = 3PA ÷ FGA (the share of shots that are threes), and FT% = FTM ÷ FTA, all totaled across the window. OREB, FTA, TOV, STL and BLK are per-game averages. Regular season only; a team with fewer games than the window uses all of its games. Game times are in your local time zone. Source: ESPN box scores, updated every morning.</p>
   </div>
 </div>
 
@@ -415,8 +415,10 @@ const STATS = [
   { key: "drtg", label: "DRTG", hint: "def. rating", higherBetter: false },
   { key: "efg", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true, matchup: true, groupStart: true },
   { key: "tp",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
+  { key: "tpr", label: "3P Rate", hint: "3PA ÷ FGA", pct: true, higherBetter: true },
   { key: "oreb", label: "OREB", hint: "per game", higherBetter: true, matchup: true },
   { key: "fta", label: "FTA",  hint: "per game", higherBetter: true, matchup: true },
+  { key: "ftp", label: "FT%",  hint: "free throw", pct: true, higherBetter: true },
   { key: "tov", label: "TOV",  hint: "per game", higherBetter: false, matchup: true },
   { key: "stl", label: "STL",  hint: "per game", higherBetter: true, matchup: true, groupStart: true },
   { key: "blk", label: "BLK",  hint: "per game", higherBetter: true, matchup: true },
@@ -441,7 +443,7 @@ function aggregate(games, n) {
   }
   return Object.entries(byTeam).map(([team, list]) => {
     const slice = n > 0 ? list.slice(-n) : list;
-    const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, fta: 0, oreb: 0, tov: 0, pts: 0, stl: 0, blk: 0 };
+    const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, oreb: 0, tov: 0, pts: 0, stl: 0, blk: 0 };
     let oppPts = 0, poss = 0;
     const log = [];
     for (const g of slice) {
@@ -456,6 +458,8 @@ function aggregate(games, n) {
         net: ortgG - drtgG, ortg: ortgG, drtg: drtgG,
         efg: g.fga ? (g.fgm + 0.5 * g.tpm) / g.fga * 100 : 0,
         tp: g.tpa ? g.tpm / g.tpa * 100 : 0,
+        tpr: g.fga ? g.tpa / g.fga * 100 : 0,
+        ftp: g.fta ? g.ftm / g.fta * 100 : 0,
         oreb: g.oreb, fta: g.fta, tov: g.tov, stl: g.stl, blk: g.blk,
       });
     }
@@ -468,6 +472,8 @@ function aggregate(games, n) {
       net: ortg - drtg,
       efg: t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : 0,
       tp: t.tpa ? t.tpm / t.tpa * 100 : 0,
+      tpr: t.fga ? t.tpa / t.fga * 100 : 0,
+      ftp: t.fta ? t.ftm / t.fta * 100 : 0,
       oreb: t.oreb / gp,
       fta: t.fta / gp,
       tov: t.tov / gp,
@@ -554,7 +560,7 @@ function renderStats() {
 function gameRows(r) {
   return r.log.map((g, i) => {
     const d = new Date(g.date);
-    const date = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     const win = g.pts > g.oppPts;
     // Single-game counts (OREB, FTA, TOV, STL, BLK) are whole numbers.
     const show = s => (s.pct || s.signed || s.key === "ortg" || s.key === "drtg") ? fmt(s, g[s.key]) : String(g[s.key]);
