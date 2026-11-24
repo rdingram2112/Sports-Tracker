@@ -109,9 +109,16 @@ body {
   /* Players on phones: one stat group at a time */
   #players-box[data-group="basic"] [data-g]:not([data-g="basic"]),
   #players-box[data-group="eff"] [data-g]:not([data-g="eff"]),
-  #players-box[data-group="def"] [data-g]:not([data-g="def"]) { display: none; }
+  #players-box[data-group="hustle"] [data-g]:not([data-g="hustle"]) { display: none; }
   #players-box th small { display: none; }
-  #players-box th button { font-size: 13px; letter-spacing: 0.03em; }
+  #players-box th { white-space: normal; vertical-align: bottom; }
+  #players-box th button { font-size: 13px; letter-spacing: 0.03em; line-height: 1.1; text-align: right; justify-content: flex-end; }
+  /* Efficiency on phones: five percentage columns, so drop the % sign (the headings say it) and GP */
+  #players-box[data-group="eff"] .pc { display: none; }
+  #players-box[data-group="eff"] tr > :nth-child(2) { display: none; }
+  #players-box[data-group="eff"] td { font-size: 13px; }
+  #players-box[data-group="eff"] th, #players-box[data-group="eff"] td { padding-inline: 3px; }
+  #players-box[data-group="eff"] th button { font-size: 12px; letter-spacing: 0.02em; }
   #players-box th, #players-box td { padding-inline: 5px; }
   #players-box th:first-child, #players-box td:first-child { padding-left: 6px; }
   #players-box .player, #players-box .pbtn { gap: 5px; }
@@ -758,7 +765,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <div class="seg pgroup" role="group" aria-label="Stat group">
         <button type="button" data-pgroup="basic">Basics</button>
         <button type="button" data-pgroup="eff">Efficiency</button>
-        <button type="button" data-pgroup="def">Defense</button>
+        <button type="button" data-pgroup="hustle">Hustle</button>
       </div>
       <div class="table-box" id="players-box">
         <table class="ptable">
@@ -802,7 +809,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
 
   <div class="notes" id="notes-players" hidden>
     <p>Time periods count back from the most recent game day: last week is the last 7 days, last 2 weeks the last 14, and last month the last 30. Per game lists only players who played in at least half of their team's games in the period, so players who have been out injured drop off; Totals lists everyone who played. Click a column to sort by it, and click again to reverse.</p>
-    <p>eFG% = (FGM + 0.5 × 3PM) ÷ FGA, totaled across the period, so it gives threes their extra point. When sorting by eFG%, players averaging fewer than 5 shots a game are listed after everyone else.</p>
+    <p>Shooting stats are totaled across the period: eFG% = (FGM + 0.5 × 3PM) ÷ FGA, 3P% = 3PM ÷ 3PA, 3P rate = 3PA ÷ FGA, FT rate = FTA ÷ FGA (how often a player gets to the line), and FT% = FTM ÷ FTA. When sorting by one of them, low-volume players go after everyone else: under 5 shots a game for eFG%, 3P rate and FT rate, and under 2 attempts a game for 3P% and FT%.</p>
     <p>Team is the player's team in his most recent game in the period. Photos and box scores come from ESPN, updated every morning.</p>
   </div>
 
@@ -840,22 +847,29 @@ const state = {
   pexpanded: null, pchartStat: null,
 };
 const VIEWS = ["stats", "matchups", "players", "live"];
+const efgOf = t => t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null;
+const pctOf = (num, den) => den ? num / den * 100 : null;
+// Percentage stats come from totals (made, attempted). `volume` is the per-game attempts a
+// player needs to rank near the top when sorting by that stat, so a 2-for-2 night can't lead.
+// `shots` describes a game's attempts in the chart tooltip.
 const PSTATS = [
   { key: "min", g: "basic", label: "MIN" },
-  { key: "efg", g: "eff", label: "eFG%", pct: true },
+  { key: "efg", g: "eff", label: "eFG%", pct: true, calc: efgOf, volume: ["fga", 5], shots: t => `${t.fgm}/${t.fga} FG` },
+  { key: "tp", g: "eff", label: "3P%", pct: true, calc: t => pctOf(t.tpm, t.tpa), volume: ["tpa", 2], shots: t => `${t.tpm}/${t.tpa} 3PT` },
+  { key: "tpr", g: "eff", label: "3P Rate", pct: true, calc: t => pctOf(t.tpa, t.fga), volume: ["fga", 5], shots: t => `${t.tpa} of ${t.fga} shots were threes` },
+  { key: "ftr", g: "eff", label: "FT Rate", pct: true, calc: t => pctOf(t.fta, t.fga), volume: ["fga", 5], shots: t => `${t.fta} FTA, ${t.fga} FGA` },
+  { key: "ftp", g: "eff", label: "FT%", pct: true, calc: t => pctOf(t.ftm, t.fta), volume: ["fta", 2], shots: t => `${t.ftm}/${t.fta} FT` },
   { key: "pts", g: "basic", label: "PTS" },
   { key: "reb", g: "basic", label: "REB" },
-  { key: "oreb", g: "eff", label: "OREB" },
+  { key: "oreb", g: "hustle", label: "OREB" },
   { key: "ast", g: "basic", label: "AST" },
-  { key: "stl", g: "def", label: "STL" },
-  { key: "blk", g: "def", label: "BLK" },
-  { key: "tov", g: "eff", label: "TOV" },
+  { key: "stl", g: "hustle", label: "STL" },
+  { key: "blk", g: "hustle", label: "BLK" },
+  { key: "tov", g: "hustle", label: "TOV" },
 ];
 const PLAYER_LIMIT = 50;
-// Box-score columns added up across a player's games (eFG% is worked out from fgm, fga and tpm).
-const PSUM = ["min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm"];
-const EFG_MIN_FGA = 5; // per game, to rank near the top when sorting by eFG%
-const efgOf = t => t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null;
+// Box-score columns added up across a player's games (percentages are worked out from these).
+const PSUM = ["min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"];
 
 function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
@@ -1141,8 +1155,11 @@ function playerLeaders() {
     for (const row of slice) for (const k of PSUM) tot[k] += row[col[k]];
     const p = info[pid] || { name: pid, short: pid };
     const vals = per ? Object.fromEntries(PSUM.map(k => [k, tot[k] / gp])) : { ...tot };
-    vals.efg = efgOf(tot);
-    vals.lowVolume = tot.fga / gp < EFG_MIN_FGA;
+    vals.low = {};
+    for (const st of PSTATS) if (st.calc) {
+      vals[st.key] = st.calc(tot);
+      vals.low[st.key] = tot[st.volume[0]] / gp < st.volume[1];
+    }
     list.push({ id: pid, name: p.name, pos: p.pos || "", team, gp, teamGp: teamGames[team] || 0, ...vals });
   }
   const k = state.psort;
@@ -1150,7 +1167,7 @@ function playerLeaders() {
   list.sort((a, b) => {
     if (k === "name") return a.name.localeCompare(b.name) * sign;
     // For eFG%, players taking fewer than 5 shots a game go after everyone else.
-    if (k === "efg" && a.lowVolume !== b.lowVolume) return a.lowVolume ? 1 : -1;
+    if (a.low?.[k] !== undefined && a.low[k] !== b.low[k]) return a.low[k] ? 1 : -1;
     return ((a[k] ?? -1) - (b[k] ?? -1)) * sign || b.pts - a.pts || a.name.localeCompare(b.name);
   });
   list.forEach((r, i) => { r.rank = i + 1; });
@@ -1193,7 +1210,7 @@ function renderPlayers() {
   const total = shown.length;
   if (!state.pall && !q) shown = shown.slice(0, PLAYER_LIMIT);
 
-  const showStat = (s, v) => v == null ? "—" : s.pct ? v.toFixed(1) + "%" : per ? v.toFixed(1) : String(v);
+  const showStat = (s, v) => v == null ? "—" : s.pct ? v.toFixed(1) + '<span class="pc">%</span>' : per ? v.toFixed(1) : String(v);
   const cols = 2 + PSTATS.length;
   body.innerHTML = shown.length ? shown.map(r => {
     const open = state.pexpanded === r.id;
@@ -1225,17 +1242,17 @@ function renderPlayerChart() {
   // Each game: its day, opponent, and the player's value for the chosen stat.
   const meta = {};
   for (const g of state.data.games) meta[g.gameId + "|" + g.team] = { day: etDay(g.date), opp: g.opp, home: g.home };
-  const rowTotals = row => ({ fgm: row[col.fgm], fga: row[col.fga], tpm: row[col.tpm] });
+  const rowTotals = row => ({ fgm: row[col.fgm], fga: row[col.fga], tpm: row[col.tpm], tpa: row[col.tpa], ftm: row[col.ftm], fta: row[col.fta] });
   const games = lines.map(row => {
     const m = meta[row[col.gameId] + "|" + row[col.team]] || {};
-    const v = stat.key === "efg" ? efgOf(rowTotals(row)) : row[col[stat.key]];
+    const v = stat.calc ? stat.calc(rowTotals(row)) : row[col[stat.key]];
     return { day: m.day, opp: m.opp, home: m.home, team: row[col.team], v, ...rowTotals(row), inPeriod: !start || m.day >= start };
   });
   const recent = games.filter(g => g.inPeriod);
-  // eFG% averages are worked out from total makes and attempts, not by averaging each game's percentage.
+  // Percentage averages are worked out from total makes and attempts, not by averaging each game's percentage.
   const sum = (list, k) => list.reduce((a, g) => a + g[k], 0);
-  const average = list => stat.key === "efg"
-    ? (efgOf({ fgm: sum(list, "fgm"), fga: sum(list, "fga"), tpm: sum(list, "tpm") }) ?? 0)
+  const average = list => stat.calc
+    ? (stat.calc(Object.fromEntries(["fgm", "fga", "tpm", "tpa", "ftm", "fta"].map(k => [k, sum(list, k)]))) ?? 0)
     : sum(list, "v") / (list.length || 1);
   const avg = average(games);
   const recentAvg = average(recent);
@@ -1332,8 +1349,8 @@ function drawBars(box, games, avg, recentAvg, stat, name) {
     const scale = svgEl.getBoundingClientRect().width / W;
     const cx = (Number(hit.getAttribute("x")) + band / 2) * scale;
     const cy = y(g.v ?? 0) * scale;
-    const value = stat.key === "efg"
-      ? (g.v == null ? "No shots" : `<b>${g.v.toFixed(1)}%</b> eFG (${g.fgm}/${g.fga} FG)`)
+    const value = stat.calc
+      ? (g.v == null ? `No attempts (${stat.shots(g)})` : `<b>${g.v.toFixed(1)}%</b> ${stat.label.replace("%", "")} (${stat.shots(g)})`)
       : `<b>${g.v}</b> ${stat.label}`;
     tip.innerHTML = `${value} · ${shortDay(g.day)} ${g.home ? "vs" : "@"} ${g.opp}`;
     tip.style.left = Math.min(Math.max(cx, 70), box.clientWidth - 70) + "px";
@@ -1761,7 +1778,7 @@ document.getElementById("days").addEventListener("click", e => {
 
 state.n = load("st.n", 10);
 state.tgroup = ["ratings", "shooting", "hustle"].includes(load("st.tgroup", "ratings")) ? load("st.tgroup", "ratings") : "ratings";
-state.pgroup = ["basic", "eff", "def"].includes(load("st.pgroup", "basic")) ? load("st.pgroup", "basic") : "basic";
+state.pgroup = ["basic", "eff", "hustle"].includes(load("st.pgroup", "basic")) ? load("st.pgroup", "basic") : "basic";
 document.querySelector(".pgroup").addEventListener("click", e => {
   const b = e.target.closest("button[data-pgroup]");
   if (!b) return;
