@@ -100,6 +100,36 @@ body {
 }
 
 .wrap > * { min-width: 0; } /* let the wide table scroll inside its box */
+/* Team stats on phones: one stat group at a time, rank under the value */
+.seg.tgroup { display: none; }
+@media (max-width: 760px) {
+  #view-stats { display: grid; gap: 12px; }
+  #view-stats > * { min-width: 0; }
+  .seg.tgroup { display: inline-flex; justify-self: start; }
+  #stats-box[data-group="ratings"] [data-g]:not([data-g="ratings"]),
+  #stats-box[data-group="shooting"] [data-g]:not([data-g="shooting"]),
+  #stats-box[data-group="hustle"] [data-g]:not([data-g="hustle"]) { display: none; }
+  #stats-box th.grp, #stats-box td.grp { border-left: 0; }
+  #stats-box .cell { flex-direction: column; align-items: flex-end; gap: 1px; }
+  #stats-box .rank { min-width: 0; font-size: 11px; padding: 0 4px; }
+  #stats-box th small { display: none; }
+  #stats-box th { white-space: normal; vertical-align: bottom; }
+  #stats-box th button { font-size: 13px; letter-spacing: 0.03em; line-height: 1.1; text-align: right; justify-content: flex-end; }
+  #stats-box th, #stats-box td { padding-inline: 4px; }
+  #stats-box th:first-child, #stats-box td:first-child { padding-left: 8px; }
+  #stats-box td { font-size: 14px; }
+  #stats-box .team-btn { gap: 6px; }
+  #stats-box .team .logo { width: 22px; height: 22px; }
+  #stats-box .team .abbr { width: auto; font-size: 15px; }
+  /* Game rows: date above the opponent, W/L above the score */
+  #stats-box .game-info { flex-wrap: wrap; gap: 0 3px; padding-left: 0; width: 64px; }
+  #stats-box .game-info .gdate { width: 100%; font-size: 11px; line-height: 1.2; }
+  #stats-box .game-info .vs { width: auto; font-size: 12px; }
+  #stats-box .game-info .logo { width: 16px; height: 16px; }
+  /* The result moves under the opponent so the GP column stays narrow */
+  #stats-box tr.game-row td:nth-child(2) .result { display: none; }
+  #stats-box .game-info .result-inline { display: block; width: 100%; font-size: 11px; line-height: 1.3; }
+}
 header { display: grid; gap: 6px; }
 .eyebrow {
   font-family: var(--font-display);
@@ -204,6 +234,7 @@ tbody tr.game-row:hover td { background: var(--bg); }
 .gopp { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
 .result { font-weight: 600; font-size: 13px; white-space: nowrap; }
 .result.w { color: var(--good-fg); }
+.result-inline { display: none; }
 .result.l { color: var(--bad-fg); }
 @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
 th, td { padding: 9px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
@@ -663,7 +694,12 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
   </div>
 
   <section id="view-stats">
-    <div class="table-box">
+    <div class="seg tgroup" role="group" aria-label="Stat group">
+      <button type="button" data-tgroup="ratings">Ratings</button>
+      <button type="button" data-tgroup="shooting">Shooting</button>
+      <button type="button" data-tgroup="hustle">Hustle</button>
+    </div>
+    <div class="table-box" id="stats-box">
       <table>
         <thead><tr id="head-row"></tr></thead>
         <tbody id="rows"></tbody>
@@ -757,18 +793,18 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
 <script>
 // matchup: also shown on matchup cards. groupStart: draws a divider before the column.
 const STATS = [
-  { key: "net",  label: "NET",  hint: "net rating", signed: true, higherBetter: true, matchup: true },
-  { key: "ortg", label: "ORTG", hint: "off. rating", higherBetter: true },
-  { key: "drtg", label: "DRTG", hint: "def. rating", higherBetter: false },
-  { key: "efg", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true, matchup: true, groupStart: true },
-  { key: "tp",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
-  { key: "tpr", label: "3P Rate", hint: "3PA ÷ FGA", pct: true, higherBetter: true, matchup: true },
-  { key: "oreb", label: "OREB", hint: "per game", higherBetter: true, matchup: true },
-  { key: "fta", label: "FTA",  hint: "per game", higherBetter: true, matchup: true },
-  { key: "ftp", label: "FT%",  hint: "free throw", pct: true, higherBetter: true, matchup: true },
-  { key: "tov", label: "TOV",  hint: "per game", higherBetter: false, matchup: true },
-  { key: "stl", label: "STL",  hint: "per game", higherBetter: true, matchup: true, groupStart: true },
-  { key: "blk", label: "BLK",  hint: "per game", higherBetter: true, matchup: true },
+  { key: "net", g: "ratings",  label: "NET",  hint: "net rating", signed: true, higherBetter: true, matchup: true },
+  { key: "ortg", g: "ratings", label: "ORTG", hint: "off. rating", higherBetter: true },
+  { key: "drtg", g: "ratings", label: "DRTG", hint: "def. rating", higherBetter: false },
+  { key: "efg", g: "shooting", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true, matchup: true, groupStart: true },
+  { key: "tp", g: "shooting",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
+  { key: "tpr", g: "shooting", label: "3P Rate", hint: "3PA ÷ FGA", pct: true, higherBetter: true, matchup: true },
+  { key: "oreb", g: "hustle", label: "OREB", hint: "per game", higherBetter: true, matchup: true },
+  { key: "fta", g: "shooting", label: "FTA",  hint: "per game", higherBetter: true, matchup: true },
+  { key: "ftp", g: "shooting", label: "FT%",  hint: "free throw", pct: true, higherBetter: true, matchup: true },
+  { key: "tov", g: "hustle", label: "TOV",  hint: "per game", higherBetter: false, matchup: true },
+  { key: "stl", g: "hustle", label: "STL",  hint: "per game", higherBetter: true, matchup: true, groupStart: true },
+  { key: "blk", g: "hustle", label: "BLK",  hint: "per game", higherBetter: true, matchup: true },
 ];
 const PRESETS = [5, 10, 15, 0];
 
@@ -901,6 +937,8 @@ function dayLabel(iso) {
 
 /* ---------- team stats view ---------- */
 function renderStats() {
+  document.getElementById("stats-box").dataset.group = state.tgroup;
+  document.querySelectorAll(".tgroup button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tgroup === state.tgroup)));
   const rows = currentRows();
   const total = rows.length;
   const stat = STATS.find(s => s.key === state.sort);
@@ -915,12 +953,12 @@ function renderStats() {
   document.getElementById("head-row").innerHTML =
     `<th><button type="button" data-sort="team">Team <span class="arrow">${arrow("team")}</span></button></th>` +
     `<th><span class="th-plain">GP</span><small>in window</small></th>` +
-    STATS.map(s => `<th class="${s.groupStart ? "grp" : ""}" aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
+    STATS.map(s => `<th data-g="${s.g}" class="${s.groupStart ? "grp" : ""}" aria-sort="${state.sort === s.key ? (dir === "rank" ? "ascending" : "descending") : "none"}"><button type="button" data-sort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.hint}</small></th>`).join("");
 
   document.getElementById("rows").innerHTML = rows.map(r => {
     const info = teamInfo(r.team);
     const open = state.expanded === r.team;
-    const cells = STATS.map(s => `<td class="${s.groupStart ? "grp" : ""}">${statCell(s, r, total)}</td>`).join("");
+    const cells = STATS.map(s => `<td data-g="${s.g}" class="${s.groupStart ? "grp" : ""}">${statCell(s, r, total)}</td>`).join("");
     const main = `<tr class="team-row${open ? " open" : ""}" data-team="${r.team}"><td><button type="button" class="team team-btn" aria-expanded="${open}" aria-label="${info.name}: show games">
         <span class="chev" aria-hidden="true"></span>${logo(r.team)}<span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></button></td><td class="gp">${r.gp}</td>${cells}</tr>`;
     return open ? main + gameRows(r) : main;
@@ -934,10 +972,10 @@ function gameRows(r) {
     const win = g.pts > g.oppPts;
     // Single-game counts (OREB, FTA, TOV, STL, BLK) are whole numbers.
     const show = s => (s.pct || s.signed || s.key === "ortg" || s.key === "drtg") ? fmt(s, g[s.key]) : String(g[s.key]);
-    const cells = STATS.map(s => `<td class="${s.groupStart ? "grp" : ""}">${show(s)}</td>`).join("");
+    const cells = STATS.map(s => `<td data-g="${s.g}" class="${s.groupStart ? "grp" : ""}">${show(s)}</td>`).join("");
     return `<tr class="game-row${i === r.log.length - 1 ? " last" : ""}">
-      <td><div class="game-info"><span class="gdate">${date}</span><span class="vs">${g.home ? "vs" : "@"}</span>${logo(g.opp)}<span class="gopp">${g.opp}</span></div></td>
-      <td><span class="result ${win ? "w" : "l"}">${win ? "W" : "L"} ${g.pts}–${g.oppPts}</span></td>${cells}</tr>`;
+      <td><div class="game-info"><span class="gdate">${date}</span><span class="vs">${g.home ? "vs" : "@"}</span>${logo(g.opp)}<span class="gopp">${g.opp}</span><span class="result result-inline ${win ? "w" : "l"}">${win ? "W" : "L"} ${g.pts}–${g.oppPts}</span></div></td>
+      <td><span class="result ${win ? "w" : "l"}"><span class="wl">${win ? "W" : "L"}</span> <span class="sc">${g.pts}–${g.oppPts}</span></span></td>${cells}</tr>`;
   }).join("");
 }
 
@@ -1696,6 +1734,14 @@ document.getElementById("days").addEventListener("click", e => {
 });
 
 state.n = load("st.n", 10);
+state.tgroup = ["ratings", "shooting", "hustle"].includes(load("st.tgroup", "ratings")) ? load("st.tgroup", "ratings") : "ratings";
+document.querySelector(".tgroup").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tgroup]");
+  if (!b) return;
+  state.tgroup = b.dataset.tgroup;
+  save("st.tgroup", state.tgroup);
+  render();
+});
 state.view = viewFromHash();
 state.pspan = [7, 14, 30, 0].includes(load("st.pspan", 14)) ? load("st.pspan", 14) : 14;
 

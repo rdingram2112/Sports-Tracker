@@ -16,7 +16,7 @@ Percentages are totaled across the window rather than averaged game by game. Reg
 
 Use the menu at the top left to switch views (each has its own link):
 
-- **Team stats** (`/`): the table above. Click a team to see its games in the window.
+- **Team stats** (`/`): the table above. Click a team to see its games in the window. On phones the columns are split into Ratings, Shooting and Hustle groups so each fits the screen.
 - **Matchups** (`#matchups`): each upcoming game with both teams' records, the betting line (spread, over/under, moneyline) and stats side by side.
 - **Live scores** (`#live`): today's and yesterday's games with quarter-by-quarter scores and team leaders. Click a game for its box score (MIN, FG, 3PT, FT, PTS, REB, AST for every player; "Show all stats" adds STL, BLK, TOV and PF), which also refreshes every 30 seconds during a live game. The page fetches ESPN's scoreboard directly in the browser and refreshes every 30 seconds while the view is open.
 - **Players** (`#players`): player leaders in MIN, eFG%, PTS, REB, OREB, AST, STL, BLK and TOV over the last week, 2 weeks, month or season, as totals or per game. Per game lists players who played at least half of their team's games in that period, so injured players drop off. Click a player for a game-by-game bar chart of any stat with season and recent averages. Headshots load from ESPN.
