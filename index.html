@@ -26,6 +26,8 @@
   --edge-bg: #fdf0e9;
   --bar-faded: #cdd2da;
   --grid: #e7e9ee;
+  --court-line: #9aa3b0;
+  --z-cold2: #6f9bd6; --z-cold1: #b4cbea; --z-even: #e3e6eb; --z-hot1: #f2c3a2; --z-hot2: #e48655; --z-low: #f1f2f5;
   --live: #c62828;
   --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -36,7 +38,8 @@
     --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
     --accent: #f07a3e; --accent-ink: #1a0d05;
     --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
-    --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37;
+    --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37; --court-line: #5d6877;
+    --z-cold2: #3b6fb0; --z-cold1: #2b4466; --z-even: #2a313b; --z-hot1: #73402a; --z-hot2: #b6592b; --z-low: #1b222c;
     color-scheme: dark;
   }
 }
@@ -44,7 +47,8 @@
   --bg: #0f141b; --surface: #161d27; --fg: #e6eaf0; --muted: #96a1b0; --line: #2a3442;
   --accent: #f07a3e; --accent-ink: #1a0d05;
   --good-bg: #173a26; --good-fg: #8fe0ad; --bad-bg: #42201b; --bad-fg: #f5a597; --head-bg: #1c2532;
-  --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37;
+  --edge-bg: #2a2019; --live: #ff6b6b; --bar-faded: #3a4452; --grid: #222b37; --court-line: #5d6877;
+    --z-cold2: #3b6fb0; --z-cold1: #2b4466; --z-even: #2a313b; --z-hot1: #73402a; --z-hot2: #b6592b; --z-low: #1b222c;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -458,6 +462,9 @@ tbody tr:hover td { background: var(--head-bg); }
 .box td.dim { color: var(--muted); }
 .box .bp { display: flex; align-items: center; gap: 8px; }
 .box .bp .shot { width: 26px; height: 26px; }
+.bp-link { all: unset; cursor: pointer; }
+.bp-link:hover .bn { text-decoration: underline; }
+.bp-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .box .bp .bn { overflow: hidden; text-overflow: ellipsis; }
 .gd-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .gd-toggle {
@@ -491,6 +498,95 @@ tbody tr:hover td { background: var(--head-bg); }
 }
 .dnp { font-size: 13px; color: var(--muted); }
 .gd-msg { color: var(--muted); text-align: center; padding: 24px 8px; }
+
+/* Player page */
+.pp { display: grid; gap: 26px; }
+.pp > * { min-width: 0; }
+.pp-back {
+  font: 600 14px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.pp-back:hover { background: var(--head-bg); }
+.pp-head { display: grid; grid-template-columns: auto 1fr; gap: 18px 24px; align-items: center; }
+.pp-photo {
+  width: 168px; height: 168px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--head-bg);
+  border: 1px solid var(--line);
+  display: grid; place-items: center;
+}
+.pp-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.pp-photo.noimg::before { content: attr(data-init); font: 700 44px var(--font-display); color: var(--muted); }
+.pp-id { display: grid; gap: 6px; min-width: 0; }
+.pp-team { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--muted); }
+.pp-team .logo { width: 26px; height: 26px; }
+.pp-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 20px; margin: 6px 0 0; }
+.pp-facts div { display: grid; gap: 1px; min-width: 0; }
+.pp-facts dt { font: 600 11px var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.pp-facts dd { margin: 0; font-weight: 600; }
+.pp-section { display: grid; gap: 10px; }
+.pp-section > * { min-width: 0; }
+.pp-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.pp-section h2 { margin: 0; font: 700 24px var(--font-display); }
+.pp-note { margin: 0; color: var(--muted); font-size: 13px; }
+.ctable td:first-child, .ctable th:first-child { text-align: left; }
+.ctable .season { display: grid; gap: 2px; font-weight: 600; }
+.ctable .season .tm { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.ctable .season .tm .logo { width: 16px; height: 16px; }
+.ctable tr.career td { background: var(--head-bg); font-weight: 700; border-bottom: 0; }
+.seg.cgroup { display: none; }
+
+/* Shot chart */
+.shot-layout { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.court-box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.court-box svg { display: block; width: 100%; height: auto; }
+.court-box .ln { fill: none; stroke: var(--court-line); stroke-width: 2; }
+.court-box .zone { stroke: var(--surface); stroke-width: 3; }
+.court-box .zl { font-family: var(--font-display); text-anchor: middle; fill: var(--fg); }
+.court-box .zl .big { font-size: 24px; font-weight: 700; }
+.court-box .zl .small { font-size: 16px; font-weight: 500; fill: var(--muted); }
+.z-cold2 { fill: var(--z-cold2); } .z-cold1 { fill: var(--z-cold1); } .z-even { fill: var(--z-even); }
+.z-hot1 { fill: var(--z-hot1); } .z-hot2 { fill: var(--z-hot2); } .z-low { fill: var(--z-low); }
+.shot-side { display: grid; gap: 14px; min-width: 0; }
+.shot-legend { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.shot-legend .scale { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.shot-legend .sw { width: 22px; height: 14px; border-radius: 3px; display: inline-block; margin: 0; border: 0; }
+.zone-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.zone-table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; font-size: 14px; }
+.zone-table th, .zone-table td { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: static; }
+.zone-table th { font: 600 12px var(--font-display); letter-spacing: 0.05em; color: var(--muted); background: var(--head-bg); }
+.zone-table th:first-child, .zone-table td:first-child { text-align: left; }
+.zone-table tr:last-child td { border-bottom: 0; }
+.zone-table .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.zone-table td.up { color: var(--good-fg); font-weight: 600; }
+.zone-table td.down { color: var(--bad-fg); font-weight: 600; }
+@media (max-width: 860px) {
+  .shot-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .pp-head { grid-template-columns: 1fr; justify-items: start; }
+  .pp-photo { width: 128px; height: 128px; }
+  .pp-facts { grid-template-columns: 1fr 1fr; }
+  .seg.cgroup { display: inline-flex; }
+  #career-box[data-group="basic"] [data-g]:not([data-g="basic"]),
+  #career-box[data-group="eff"] [data-g]:not([data-g="eff"]),
+  #career-box[data-group="hustle"] [data-g]:not([data-g="hustle"]) { display: none; }
+  #career-box th small { display: none; }
+  #career-box th { white-space: normal; vertical-align: bottom; }
+  #career-box th button, #career-box th .th-plain { font-size: 13px; letter-spacing: 0.03em; line-height: 1.1; }
+  #career-box th, #career-box td { padding-inline: 4px; }
+  #career-box th:first-child, #career-box td:first-child { padding-left: 8px; }
+  #career-box td { font-size: 14px; }
+  #career-box[data-group="eff"] .pc { display: none; }
+  .zone-table { font-size: 13px; }
+  .zone-table th, .zone-table td { padding-inline: 5px; }
+}
 @media (max-width: 480px) {
   .gd-score { flex-wrap: nowrap; gap: 8px; }
   .gd-score .tm { gap: 5px; }
@@ -796,6 +892,46 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     </div>
   </section>
 
+  <section id="view-player" hidden>
+    <div class="pp">
+      <div><button type="button" class="pp-back" id="pp-back">‹ Back</button></div>
+      <div class="pp-head" id="pp-head"></div>
+
+      <div class="pp-section">
+        <div class="pp-section-head">
+          <h2>Career</h2>
+          <div class="seg cgroup" role="group" aria-label="Stat group">
+            <button type="button" data-cgroup="basic">Basics</button>
+            <button type="button" data-cgroup="eff">Efficiency</button>
+            <button type="button" data-cgroup="hustle">Hustle</button>
+          </div>
+        </div>
+        <p class="pp-note">Per game. Small numbers are percentiles among players at the same position that season (players need a quarter of the season's games to be compared).</p>
+        <div class="table-box" id="career-box">
+          <table class="ptable ctable"><thead><tr id="c-head"></tr></thead><tbody id="c-rows"></tbody></table>
+        </div>
+      </div>
+
+      <div class="pp-section">
+        <div class="pp-section-head">
+          <h2>Shot chart</h2>
+          <div class="seg shotspan" role="group" aria-label="Shot chart period">
+            <button type="button" data-shotspan="0">Season</button>
+            <button type="button" data-shotspan="30">Last month</button>
+            <button type="button" data-shotspan="14">Last 2 weeks</button>
+          </div>
+        </div>
+        <div class="shot-layout">
+          <div class="court-box" id="court-box"></div>
+          <div class="shot-side">
+            <div class="shot-legend" id="shot-legend"></div>
+            <div class="zone-table-wrap"><table class="zone-table" id="zone-table"></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <dialog id="game-dialog" aria-labelledby="gd-title">
     <div class="gd">
       <div class="gd-head">
@@ -853,7 +989,7 @@ const state = {
   pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
   pexpanded: null, pchartStat: null,
 };
-const VIEWS = ["stats", "matchups", "players", "live"];
+const VIEWS = ["stats", "matchups", "players", "live", "player"];
 const efgOf = t => t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null;
 const pctOf = (num, den) => den ? num / den * 100 : null;
 // Percentage stats come from totals (made, attempted). `volume` is the per-game attempts a
@@ -1318,6 +1454,7 @@ function renderPlayerChart() {
 
   panel.innerHTML = `
     <div class="pchart-top">
+      <button type="button" class="pp-back profile-btn" data-profile="${esc(pid)}">View profile ›</button>
       <div class="stat-tabs" role="group" aria-label="Stat to chart">
         ${PSTATS.map(s => `<button type="button" data-pstat="${s.key}" aria-pressed="${s.key === stat.key}">${s.label}</button>`).join("")}
       </div>
@@ -1577,7 +1714,7 @@ function boxRow(p, cls = "") {
     ? `<td class="${p[c.att] ? "" : "dim"}">${p[c.made]}-${p[c.att]}</td>`
     : `<td class="${c.key === "pts" ? "pts" : ""}">${p[c.key]}</td>`;
   return `<tr class="${cls}">
-    <td>${cls === "totals" ? "Totals" : `<div class="bp">${headshot(p.id, p.name)}<span class="bn">${esc(p.short)}</span></div>`}</td>
+    <td>${cls === "totals" ? "Totals" : `<button type="button" class="bp bp-link" data-profile="${esc(p.id)}">${headshot(p.id, p.name)}<span class="bn">${esc(p.short)}</span></button>`}</td>
     ${boxCols().map(cell).join("")}
   </tr>`;
 }
@@ -1686,6 +1823,13 @@ document.getElementById("gd-toggle").addEventListener("click", () => {
   if (box.data) renderBox(box.data);
 });
 dialog.addEventListener("close", () => { box.gameId = null; clearInterval(box.timer); });
+// Tapping a player's name opens his page.
+document.getElementById("gd-body").addEventListener("click", e => {
+  const b = e.target.closest("button[data-profile]");
+  if (!b) return;
+  closeBox();
+  openPlayer(b.dataset.profile);
+});
 // Clicking the dimmed area outside the popup closes it.
 dialog.addEventListener("click", e => { if (e.target === dialog) closeBox(); });
 // Players without an ESPN photo get their initials.
@@ -1702,6 +1846,298 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.view === "live" && live.day === 0 && !live.loading) fetchLive();
 });
 
+/* ---------- player page ---------- */
+const pp = { careers: null, bios: null, shots: null, loading: false, error: false, shotspan: 0 };
+
+function loadPlayerPageData() {
+  if (pp.loading || (pp.careers && pp.bios && pp.shots)) return;
+  pp.loading = true;
+  const json = url => fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(url); return r.json(); });
+  Promise.all([
+    json("data/nba/careers.json"),
+    json("data/nba/bios.json"),
+    json("data/nba/shots/index.json").then(ix => Promise.all(ix.months.map(m => json(`data/nba/shots/${m}.json`)))),
+  ])
+    .then(([careers, bios, months]) => {
+      pp.careers = careers;
+      pp.bios = bios;
+      pp.shots = months.flatMap(m => m.rows); // [gameId, player, x, y, made, pts]
+    })
+    .catch(() => { pp.error = true; })
+    .finally(() => { pp.loading = false; if (state.view === "player") render(); });
+  if (!state.players) loadPlayers();
+}
+
+function openPlayer(id) {
+  if (location.hash !== "#player-" + id) location.hash = "player-" + id; // adds a history entry, so Back works
+  else setView("player");
+}
+
+// Career table columns. GP shows in every phone group; the rest belong to one.
+const CSTATS = [
+  { key: "min", label: "MIN", g: "basic" },
+  { key: "pts", label: "PTS", g: "basic" },
+  { key: "reb", label: "REB", g: "basic" },
+  { key: "ast", label: "AST", g: "basic" },
+  { key: "efg", label: "eFG%", g: "eff", pct: true },
+  { key: "tpr", label: "3P Rate", g: "eff", pct: true },
+  { key: "tp", label: "3P%", g: "eff", pct: true },
+  { key: "ftr", label: "FT Rate", g: "eff", pct: true },
+  { key: "ftp", label: "FT%", g: "eff", pct: true },
+  { key: "stl", label: "STL", g: "hustle" },
+  { key: "blk", label: "BLK", g: "hustle" },
+  { key: "tov", label: "TOV", g: "hustle" },
+];
+function careerValues(t, gp) {
+  const r = (a, b) => b ? a / b * 100 : null;
+  return {
+    min: t.min / gp, pts: t.pts / gp, reb: t.reb / gp, ast: t.ast / gp, stl: t.stl / gp, blk: t.blk / gp, tov: t.tov / gp,
+    efg: t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null,
+    tpr: r(t.tpa, t.fga), tp: r(t.tpm, t.tpa), ftr: r(t.fta, t.fga), ftp: r(t.ftm, t.fta),
+  };
+}
+
+function ageFrom(dob) {
+  if (!dob) return null;
+  const b = new Date(dob + "T12:00:00"), now = new Date();
+  let age = now.getFullYear() - b.getFullYear();
+  if (now < new Date(now.getFullYear(), b.getMonth(), b.getDate())) age--;
+  return age;
+}
+
+function renderPlayerPage() {
+  const id = state.playerId;
+  const head = document.getElementById("pp-head");
+  if (!pp.careers || !pp.bios || !pp.shots) {
+    loadPlayerPageData();
+    head.innerHTML = `<div class="gd-msg">${pp.error ? "Couldn't load the player data. Try again in a moment." : "Loading player…"}</div>`;
+    document.getElementById("c-rows").innerHTML = "";
+    document.getElementById("court-box").innerHTML = "";
+    return;
+  }
+  const bio = pp.bios[id] || {};
+  const info = state.players?.info?.[id] || {};
+  const seasons = pp.careers.players[id] || [];
+  const name = bio.name || info.name || "Player";
+  document.getElementById("headline").textContent = name;
+
+  // Header
+  const team = info.team || seasons[seasons.length - 1]?.team || "";
+  const age = ageFrom(bio.dob);
+  const dobText = bio.dob ? new Date(bio.dob + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+  const fact = (label, value) => value ? `<div><dt>${label}</dt><dd>${esc(value)}</dd></div>` : "";
+  head.innerHTML = `
+    <div class="pp-photo" data-init="${initials(name)}"><img src="https://a.espncdn.com/i/headshots/nba/players/full/${esc(id)}.png" alt="${esc(name)}" width="168" height="168"></div>
+    <div class="pp-id">
+      <div class="pp-team">${team ? logo(team) : ""}<span>${esc(teamInfo(team).name || team)}${bio.position ? ` · ${esc(bio.position)}` : ""}${bio.jersey ? ` · ${esc(bio.jersey)}` : ""}</span></div>
+      <dl class="pp-facts">
+        ${fact("Age", age != null ? `${age} (born ${dobText})` : "")}
+        ${fact("Height / weight", [bio.height, bio.weight].filter(Boolean).join(", "))}
+        ${fact("College", bio.college || (bio.birthPlace ? `None (from ${bio.birthPlace})` : ""))}
+        ${fact("Draft", bio.draft || "Undrafted")}
+        ${fact("NBA seasons", seasons.length ? `${seasons.length} (since ${seasons[0].season})` : "")}
+      </dl>
+    </div>`;
+  head.querySelector(".pp-photo img").addEventListener("error", e => { e.target.parentNode.classList.add("noimg"); e.target.remove(); });
+
+  renderCareer(seasons);
+  renderShotChart(id);
+}
+
+function renderCareer(seasons) {
+  const box = document.getElementById("career-box");
+  box.dataset.group = state.pgroup;
+  document.querySelectorAll(".cgroup button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.cgroup === state.pgroup)));
+  const keys = pp.careers.tot;
+  const fmtV = (s, v) => v == null ? "—" : s.pct ? v.toFixed(1) + '<span class="pc">%</span>' : v.toFixed(1);
+  document.getElementById("c-head").innerHTML =
+    `<th><span class="th-plain">Season</span></th><th><span class="th-plain">GP</span></th>` +
+    CSTATS.map(s => `<th data-g="${s.g}"><span class="th-plain">${s.label}</span></th>`).join("");
+  if (!seasons.length) {
+    document.getElementById("c-rows").innerHTML = `<tr><td colspan="${CSTATS.length + 2}" class="ploading">No season stats yet.</td></tr>`;
+    return;
+  }
+  const total = Object.fromEntries(keys.map(k => [k, 0]));
+  let totalGp = 0;
+  const rows = seasons.map(se => {
+    const t = Object.fromEntries(keys.map((k, i) => [k, se.tot[i]]));
+    for (const k of keys) total[k] += t[k];
+    totalGp += se.gp;
+    const v = careerValues(t, se.gp);
+    const cells = CSTATS.map(s => {
+      const pc = se.pct?.[s.key];
+      const tone = pc == null ? "" : pc >= 80 ? " hi" : pc <= 20 ? " lo" : "";
+      return `<td data-g="${s.g}"><span class="pv">${fmtV(s, v[s.key])}</span><span class="pp${tone}">${pc == null ? "&nbsp;" : ordinal(pc)}</span></td>`;
+    }).join("");
+    return `<tr><td><div class="season">${esc(se.season)}<span class="tm">${se.team ? logo(se.team) : ""}${esc(se.team)}</span></div></td><td class="dim">${se.gp}</td>${cells}</tr>`;
+  });
+  const cv = careerValues(total, totalGp || 1);
+  const careerRow = `<tr class="career"><td>Career</td><td>${totalGp}</td>${CSTATS.map(s => `<td data-g="${s.g}">${fmtV(s, cv[s.key])}</td>`).join("")}</tr>`;
+  document.getElementById("c-rows").innerHTML = rows.join("") + careerRow;
+}
+
+/* Shot zones. ESPN puts the hoop at x=25, y=0 (feet); y grows toward half court. */
+const ZONES = [
+  { key: "ra", name: "Restricted area" },
+  { key: "paint", name: "Paint" },
+  { key: "midL", name: "Mid-range left" },
+  { key: "midC", name: "Mid-range middle" },
+  { key: "midR", name: "Mid-range right" },
+  { key: "c3L", name: "Left corner 3" },
+  { key: "c3R", name: "Right corner 3" },
+  { key: "atbL", name: "Left wing 3" },
+  { key: "atbC", name: "Top of the key 3" },
+  { key: "atbR", name: "Right wing 3" },
+];
+const SIDE_ANGLE = 25;      // degrees either side of straight out from the hoop
+const CORNER_Y = 8.95;      // where the corner three line meets the arc, feet from the hoop
+function shotZone(x, y, pts) {
+  const dx = x - 25;
+  const angle = Math.atan2(dx, y) * 180 / Math.PI;
+  const side = angle < -SIDE_ANGLE ? "L" : angle > SIDE_ANGLE ? "R" : "C";
+  if (pts === 3) {
+    if (y <= CORNER_Y && Math.abs(dx) >= 20) return dx < 0 ? "c3L" : "c3R";
+    return "atb" + side;
+  }
+  if (Math.hypot(dx, y) <= 4) return "ra";
+  if (Math.abs(dx) <= 8 && y <= 13.75) return "paint";
+  return "mid" + side;
+}
+
+function zoneStats(shots) {
+  const z = Object.fromEntries(ZONES.map(o => [o.key, { fga: 0, fgm: 0 }]));
+  for (const s of shots) { const k = shotZone(s[2], s[3], s[5]); z[k].fga++; z[k].fgm += s[4]; }
+  return z;
+}
+
+function renderShotChart(id) {
+  document.querySelectorAll(".shotspan button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.shotspan) === pp.shotspan)));
+  // Limit to the chosen period, counted back from the most recent game day.
+  const games = state.data.games;
+  const gameDay = {};
+  for (const g of games) gameDay[g.gameId] ||= etDay(g.date);
+  const start = pp.shotspan ? shiftDay(etDay(games[games.length - 1].date), -(pp.shotspan - 1)) : null;
+  const inPeriod = s => !start || gameDay[s[0]] >= start;
+  const league = zoneStats(pp.shots.filter(inPeriod));
+  const mine = pp.shots.filter(s => s[1] === id && inPeriod(s));
+  const z = zoneStats(mine);
+  const total = mine.length;
+
+  const pct = o => o.fga ? o.fgm / o.fga * 100 : null;
+  const bucket = k => {
+    if (z[k].fga < 5) return "low";
+    const d = pct(z[k]) - pct(league[k]);
+    return d >= 8 ? "hot2" : d >= 3 ? "hot1" : d <= -8 ? "cold2" : d <= -3 ? "cold1" : "even";
+  };
+
+  // Court drawing: 10 units per foot, baseline at the top, hoop at (250, 52.5).
+  const H = { x: 250, y: 52.5 };
+  const far = (deg, r = 1200) => [H.x + r * Math.sin(deg * Math.PI / 180), H.y + r * Math.cos(deg * Math.PI / 180)];
+  const poly = pts => pts.map(p => p.join(",")).join(" ");
+  const A = SIDE_ANGLE;
+  const wedge = {
+    L: poly([[H.x, H.y], far(-A), [-1200, 1200], [-1200, -200], [H.x, -200]]),
+    C: poly([[H.x, H.y], far(-A), far(A)]),
+    R: poly([[H.x, H.y], far(A), [1700, 1200], [1700, -200], [H.x, -200]]),
+  };
+  const cornerY = (CORNER_Y + 5.25) * 10;
+  const arc = `M30,0 L30,${cornerY} A237.5,237.5 0 0 0 470,${cornerY} L470,0 Z`;
+  const zoneEl = (k, shape) => `<g class="zone z-${bucket(k)}">${shape}</g>`;
+  const label = (k, x, y, compact) => {
+    const o = z[k], p = pct(o);
+    const big = o.fga ? `${p.toFixed(0)}%` : "—";
+    const share = total ? `${Math.round(o.fga / total * 100)}%` : "0%";
+    return compact
+      ? `<text class="zl" x="${x}" y="${y}"><tspan class="big" style="font-size:19px">${big}</tspan><tspan class="small" x="${x}" dy="18" style="font-size:13px">${share}</tspan></text>`
+      : `<text class="zl" x="${x}" y="${y}"><tspan class="big">${big}</tspan><tspan class="small" x="${x}" dy="19">${o.fgm}/${o.fga} · ${share}</tspan></text>`;
+  };
+
+  const svg = `<svg viewBox="-26 -4 552 478" role="img" aria-label="Shot chart by court zone">
+    <defs>
+      <clipPath id="clip-court"><rect x="0" y="0" width="500" height="470"/></clipPath>
+      <clipPath id="clip-out3"><path clip-rule="evenodd" d="M0,0 H500 V470 H0 Z ${arc}"/></clipPath>
+      <clipPath id="clip-in3"><path d="${arc}"/></clipPath>
+    </defs>
+    <g clip-path="url(#clip-court)">
+      <g clip-path="url(#clip-out3)">
+        ${zoneEl("atbL", `<polygon points="${wedge.L}"/>`)}
+        ${zoneEl("atbC", `<polygon points="${wedge.C}"/>`)}
+        ${zoneEl("atbR", `<polygon points="${wedge.R}"/>`)}
+      </g>
+      ${zoneEl("c3L", `<rect x="0" y="0" width="30" height="${cornerY}"/>`)}
+      ${zoneEl("c3R", `<rect x="470" y="0" width="30" height="${cornerY}"/>`)}
+      <g clip-path="url(#clip-in3)">
+        ${zoneEl("midL", `<polygon points="${wedge.L}"/>`)}
+        ${zoneEl("midC", `<polygon points="${wedge.C}"/>`)}
+        ${zoneEl("midR", `<polygon points="${wedge.R}"/>`)}
+      </g>
+      ${zoneEl("paint", `<rect x="170" y="0" width="160" height="190"/>`)}
+      ${zoneEl("ra", `<path d="M210,0 V52.5 A40,40 0 0 0 290,52.5 V0 Z"/>`)}
+    </g>
+    <g class="ln">
+      <rect x="1" y="1" width="498" height="468"/>
+      <rect x="170" y="0" width="160" height="190"/>
+      <circle cx="250" cy="190" r="60"/>
+      <path d="M210,40 V52.5 A40,40 0 0 0 290,52.5 V40"/>
+      <path d="M30,0 L30,${cornerY} A237.5,237.5 0 0 0 470,${cornerY} L470,0"/>
+      <line x1="220" y1="40" x2="280" y2="40"/>
+      <circle cx="250" cy="52.5" r="7.5"/>
+      <path d="M190,470 A60,60 0 0 1 310,470"/>
+    </g>
+    <text class="zl" x="250" y="30"><tspan class="big" style="font-size:18px">${z.ra.fga ? pct(z.ra).toFixed(0) + "%" : "—"}</tspan><tspan class="small" style="font-size:13px" dx="6">${total ? Math.round(z.ra.fga / total * 100) : 0}%</tspan></text>
+    ${label("paint", 250, 150)}
+    ${label("midL", 98, 125)}
+    ${label("midC", 250, 255)}
+    ${label("midR", 402, 125)}
+    ${label("c3L", 12, 60, true)}
+    ${label("c3R", 488, 60, true)}
+    ${label("atbL", 62, 300)}
+    ${label("atbC", 250, 365)}
+    ${label("atbR", 438, 300)}
+  </svg>`;
+  const courtBox = document.getElementById("court-box");
+  courtBox.innerHTML = total
+    ? svg
+    : `<div class="gd-msg">No shots ${pp.shotspan ? "in this period" : "this season"} yet.</div>`;
+
+  document.getElementById("shot-legend").innerHTML = `
+    <div><b style="color:var(--fg)">${total}</b> field goal attempts${start ? ` since ${new Date(start + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : " this season"}. Each zone shows FG% and its share of his shots; colors compare his FG% there with the league's.</div>
+    <div class="scale"><span>Colder</span>${["cold2", "cold1", "even", "hot1", "hot2"].map(b => `<span class="sw" style="background:var(--z-${b})"></span>`).join("")}<span>Hotter</span>
+      <span style="margin-left:8px"><span class="sw" style="background:var(--z-low);outline:1px solid var(--line)"></span> under 5 shots</span></div>`;
+
+  const lg = k => pct(league[k]);
+  document.getElementById("zone-table").innerHTML = `
+    <thead><tr><th>Zone</th><th>FG</th><th>FG%</th><th>League</th><th>Share</th></tr></thead>
+    <tbody>${ZONES.map(o => {
+      const p = pct(z[o.key]), l = lg(o.key);
+      const diff = p != null && l != null && z[o.key].fga >= 5 ? p - l : null;
+      return `<tr><td><span class="sw" style="background:var(--z-${bucket(o.key)})"></span>${o.name}</td>
+        <td>${z[o.key].fgm}/${z[o.key].fga}</td>
+        <td class="${diff == null ? "" : diff >= 3 ? "up" : diff <= -3 ? "down" : ""}">${p == null ? "—" : p.toFixed(1) + "%"}</td>
+        <td class="dim">${l == null ? "—" : l.toFixed(1) + "%"}</td>
+        <td>${total ? Math.round(z[o.key].fga / total * 100) + "%" : "—"}</td></tr>`;
+    }).join("")}</tbody>`;
+}
+
+// Back returns to wherever you came from in the app; a shared link to a player goes to Players.
+document.getElementById("pp-back").addEventListener("click", () => {
+  if (state.cameFromApp) history.back();
+  else setView("players");
+});
+document.querySelector(".cgroup").addEventListener("click", e => {
+  const b = e.target.closest("button[data-cgroup]");
+  if (!b) return;
+  state.pgroup = b.dataset.cgroup;
+  save("st.pgroup", state.pgroup);
+  render();
+});
+document.querySelector(".shotspan").addEventListener("click", e => {
+  const b = e.target.closest("button[data-shotspan]");
+  if (!b) return;
+  pp.shotspan = Number(b.dataset.shotspan);
+  renderShotChart(state.playerId);
+});
+
 /* ---------- shell ---------- */
 function render() {
   if (!state.data) return;
@@ -1712,13 +2148,15 @@ function render() {
     players: { 7: "Player leaders over the last week", 14: "Player leaders over the last 2 weeks", 30: "Player leaders over the last month" }[state.pspan] || "Player leaders for the full season",
   };
   headlines.live = "Live scores";
-  document.getElementById("game-window").hidden = state.view === "players" || state.view === "live";
+  headlines.player = "Player";
+  const noGameWindow = ["players", "live", "player"].includes(state.view);
+  document.getElementById("game-window").hidden = noGameWindow;
   document.getElementById("headline").textContent = headlines[state.view];
-  document.getElementById("view").value = state.view;
+  document.getElementById("view").value = state.view === "player" ? "players" : state.view;
   for (const v of VIEWS) document.getElementById(`view-${v}`).hidden = state.view !== v;
   document.getElementById("notes-players").hidden = state.view !== "players";
   document.getElementById("notes-live").hidden = state.view !== "live";
-  document.getElementById("notes-team").hidden = state.view === "players" || state.view === "live";
+  document.getElementById("notes-team").hidden = noGameWindow;
 
   document.querySelectorAll(".seg button[data-n]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.n) === state.n)));
   const custom = document.getElementById("custom-n");
@@ -1728,6 +2166,7 @@ function render() {
   if (state.view === "matchups") renderMatchups();
   else if (state.view === "players") renderPlayers();
   else if (state.view === "live") renderLive();
+  else if (state.view === "player") renderPlayerPage();
   else renderStats();
   updateFit();
 }
@@ -1746,16 +2185,24 @@ window.addEventListener("resize", () => {
 });
 document.fonts?.ready.then(() => { if (state.data) updateFit(); });
 
-const viewFromHash = () => VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "stats";
+const viewFromHash = () => {
+  const h = location.hash.slice(1);
+  const m = /^player-(\d+)$/.exec(h);
+  if (m) { state.playerId = m[1]; return "player"; }
+  return VIEWS.includes(h) && h !== "player" ? h : "stats";
+};
 function setView(v) {
+  const prev = state.view;
   state.view = VIEWS.includes(v) ? v : "stats";
-  const hash = state.view === "stats" ? "" : "#" + state.view;
+  if (state.view === "player" && !state.playerId) state.view = "players";
+  const hash = state.view === "stats" ? "" : state.view === "player" ? "#player-" + state.playerId : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
+  if (state.view === "player" && prev !== "player") { state.cameFromApp = prev != null; window.scrollTo(0, 0); }
   render();
 }
 
 document.getElementById("view").addEventListener("change", e => setView(e.target.value));
-window.addEventListener("hashchange", () => setView(viewFromHash()));
+window.addEventListener("hashchange", () => { const v = viewFromHash(); setView(v); });
 document.querySelector(".pspan").addEventListener("click", e => {
   const b = e.target.closest("button[data-pspan]");
   if (b) { state.pspan = Number(b.dataset.pspan); save("st.pspan", state.pspan); render(); }
@@ -1776,6 +2223,8 @@ document.getElementById("p-search").addEventListener("input", e => { state.pq = 
 document.getElementById("p-more").addEventListener("click", () => { state.pall = !state.pall; render(); });
 // A player with no ESPN photo gets their initials instead.
 document.getElementById("p-rows").addEventListener("click", e => {
+  const prof = e.target.closest("button[data-profile]");
+  if (prof) { openPlayer(prof.dataset.profile); return; }
   const tab = e.target.closest("button[data-pstat]");
   if (tab) { state.pchartStat = tab.dataset.pstat; renderPlayerChart(); return; }
   if (e.target.closest(".pchart")) return; // clicks inside the chart panel don't close it

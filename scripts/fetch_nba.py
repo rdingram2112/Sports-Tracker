@@ -8,6 +8,13 @@ Also writes data/nba/schedule.json: regular-season games for today and the
 next several days (US Eastern dates), for the Matchups view, and
 data/nba/players.json: one row per player per game played, for the Players view.
 
+For player pages it also keeps:
+  data/nba/shots/YYYY-MM.json  every field goal attempt's court location, one file per month
+  data/nba/seasons/YYYY.json   league-wide player totals for each season since 2003-04
+                               (past seasons are downloaded once; the current one daily)
+  data/nba/bios.json           player bios (birth date, college, draft...), fetched once per player
+  data/nba/careers.json        each current player's seasons with position percentiles
+
 Usage:
     python3 scripts/fetch_nba.py
 """
@@ -24,6 +31,17 @@ OUT = Path(__file__).resolve().parent.parent / "data" / "nba" / "games.json"
 SCHEDULE_OUT = OUT.parent / "schedule.json"
 PLAYERS_OUT = OUT.parent / "players.json"
 PLAYER_COLS = ["gameId", "team", "player", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"]
+SHOTS_DIR = OUT.parent / "shots"
+SHOT_COLS = ["gameId", "player", "x", "y", "made", "pts"]
+SEASONS_DIR = OUT.parent / "seasons"
+FIRST_SEASON = 2004  # ESPN's year for 2003-04
+SEASON_COLS = ["id", "name", "pos", "team", "gp", "min", "pts", "reb", "ast", "stl", "blk", "tov",
+               "fgm", "fga", "tpm", "tpa", "ftm", "fta"]
+BIOS_OUT = OUT.parent / "bios.json"
+BIO_REFRESH_DAYS = 60
+BIO_MAX_PER_RUN = 600
+CAREERS_OUT = OUT.parent / "careers.json"
+COMMON = "https://site.api.espn.com/apis/common/v3/sports/basketball/nba"
 REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
 REQUIRED_FIELDS = ("pts", "stl", "blk")
@@ -78,6 +96,9 @@ def main():
     player_rows = pdata.get("rows", []) if pdata.get("cols") == PLAYER_COLS else []
     have_players = {r[0] for r in player_rows}
 
+    shots_by_month = load_shots()
+    have_shots = {r[0] for rows in shots_by_month.values() for r in rows}
+
     league = get_json(f"{BASE}/scoreboard")["leagues"][0]
     season = league["season"]
     today = datetime.now(timezone.utc).date()
@@ -99,7 +120,8 @@ def main():
                 continue
             need_team = ev["id"] not in have
             need_players = ev["id"] not in have_players
-            if not need_team and not need_players:
+            need_shots = ev["id"] not in have_shots
+            if not need_team and not need_players and not need_shots:
                 continue
             summary = get_json(f"{BASE}/summary?event={ev['id']}")
             box = summary["boxscore"]["teams"]
@@ -109,6 +131,10 @@ def main():
                 for row in parse_players(summary, players):
                     player_rows.append([ev["id"]] + row)
                 have_players.add(ev["id"])
+            if need_shots:
+                month = datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone(EASTERN).strftime("%Y-%m")
+                shots_by_month.setdefault(month, []).extend(parse_shots(ev["id"], summary))
+                have_shots.add(ev["id"])
             if not need_team:
                 time.sleep(0.2)
                 continue
@@ -156,7 +182,205 @@ def main():
     )
     print(f"Saved {len(player_rows)} player game lines for {len(players)} players in {PLAYERS_OUT}")
 
+    write_shots(shots_by_month)
     write_schedule(season["displayName"])
+
+    season_year = int(season["year"])
+    write_seasons(season_year)
+    write_bios(players)
+    write_careers(players, season_year)
+
+
+def load_shots():
+    months = {}
+    for f in sorted(SHOTS_DIR.glob("*.json")) if SHOTS_DIR.exists() else []:
+        if f.name == "index.json":
+            continue
+        data = json.loads(f.read_text())
+        if data.get("cols") == SHOT_COLS:
+            months[f.stem] = data["rows"]
+    return months
+
+
+def parse_shots(game_id, summary):
+    """[gameId, playerId, x, y, made, pts] for every field goal attempt with a court location.
+
+    ESPN puts the hoop at x=25, y=0, in feet; free throws are left out.
+    """
+    rows = []
+    for play in summary.get("plays") or []:
+        if not play.get("shootingPlay") or play.get("pointsAttempted") not in (2, 3):
+            continue
+        c = play.get("coordinate") or {}
+        x, y = c.get("x"), c.get("y")
+        parts = play.get("participants") or []
+        if x is None or y is None or not parts or not (-2 <= x <= 52 and -6 <= y <= 47):
+            continue
+        rows.append([game_id, str(parts[0]["athlete"]["id"]), round(x, 1), round(y, 1),
+                     1 if play.get("scoringPlay") else 0, play["pointsAttempted"]])
+    return rows
+
+
+def write_shots(shots_by_month):
+    SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    for month, rows in shots_by_month.items():
+        path = SHOTS_DIR / f"{month}.json"
+        body = ('{"cols":' + json.dumps(SHOT_COLS) + ',"rows":[\n'
+                + ",\n".join(json.dumps(r, separators=(",", ":")) for r in rows) + "\n]}")
+        if not path.exists() or path.read_text() != body:
+            path.write_text(body)
+    (SHOTS_DIR / "index.json").write_text(json.dumps({"months": sorted(shots_by_month)}))
+    print(f"Saved {sum(len(r) for r in shots_by_month.values())} shots in {SHOTS_DIR}")
+
+
+def write_seasons(current_year):
+    """League-wide player totals per season. Past seasons never change, so they're fetched once."""
+    SEASONS_DIR.mkdir(parents=True, exist_ok=True)
+    for year in range(FIRST_SEASON, current_year + 1):
+        path = SEASONS_DIR / f"{year}.json"
+        if path.exists() and year != current_year:
+            continue
+        data = get_json(f"{COMMON}/statistics/byathlete?isqualified=false&limit=1000&season={year}&seasontype=2")
+        cats = {c["name"]: c.get("names", []) for c in data.get("categories", [])}
+        rows = []
+        for entry in data.get("athletes", []):
+            ath = entry["athlete"]
+            vals = {}
+            for c in entry.get("categories", []):
+                names = cats.get(c["name"], [])
+                for name, v in zip(names, c.get("totals") or c.get("values") or []):
+                    vals.setdefault(name, v)  # first occurrence wins (names repeat for avg/total)
+
+            def num(name):
+                try:
+                    return float(str(vals.get(name, 0)).replace(",", ""))
+                except ValueError:
+                    return 0.0
+
+            rows.append([str(ath["id"]), ath.get("displayName", ""), (ath.get("position") or {}).get("abbreviation", ""),
+                         ath.get("teamShortName", ""), int(num("gamesPlayed")), round(num("minutes")),
+                         round(num("points")), round(num("rebounds")), round(num("assists")), round(num("steals")),
+                         round(num("blocks")), round(num("turnovers")), round(num("fieldGoalsMade")),
+                         round(num("fieldGoalsAttempted")), round(num("threePointFieldGoalsMade")),
+                         round(num("threePointFieldGoalsAttempted")), round(num("freeThrowsMade")),
+                         round(num("freeThrowsAttempted"))])
+        label = (data.get("requestedSeason") or {}).get("displayName") or f"{year - 1}-{str(year)[2:]}"
+        path.write_text(json.dumps({"season": label, "cols": SEASON_COLS, "rows": rows}, separators=(",", ":")))
+        print(f"Saved {len(rows)} players for {label}")
+        time.sleep(0.3)
+
+
+def write_bios(players):
+    """Bio for every player in this season's data; each is fetched once and refreshed every couple of months."""
+    bios = json.loads(BIOS_OUT.read_text()) if BIOS_OUT.exists() else {}
+    today = datetime.now(timezone.utc).date()
+    due = [pid for pid in players
+           if pid not in bios or (today - datetime.fromisoformat(bios[pid].get("fetched", "2000-01-01")).date()).days > BIO_REFRESH_DAYS]
+    for pid in due[:BIO_MAX_PER_RUN]:
+        try:
+            a = get_json(f"{COMMON}/athletes/{pid}").get("athlete", {})
+        except Exception as exc:
+            print(f"  bio {pid}: {exc}", file=sys.stderr)
+            continue
+        dob = a.get("displayDOB") or ""  # day/month/year
+        try:
+            d, m, y = (int(p) for p in dob.split("/"))
+            dob = f"{y:04d}-{m:02d}-{d:02d}"
+        except ValueError:
+            dob = ""
+        bios[pid] = {
+            "name": a.get("displayName", ""),
+            "dob": dob,
+            "college": (a.get("college") or {}).get("name", ""),
+            "birthPlace": a.get("displayBirthPlace", ""),
+            "height": a.get("displayHeight", ""),
+            "weight": a.get("displayWeight", ""),
+            "draft": a.get("displayDraft", ""),
+            "debut": a.get("debutYear"),
+            "jersey": a.get("displayJersey", ""),
+            "position": (a.get("position") or {}).get("displayName", ""),
+            "fetched": today.isoformat(),
+        }
+        time.sleep(0.15)
+    BIOS_OUT.write_text(json.dumps(dict(sorted(bios.items())), separators=(",", ":")))
+    print(f"Saved {len(bios)} bios ({min(len(due), BIO_MAX_PER_RUN)} fetched this run)")
+
+
+# Stats shown on player pages, with how each is worked out from season totals.
+# Shooting stats need some volume (per game) to be compared, so tiny samples don't skew percentiles.
+CAREER_STATS = {
+    "min": (lambda t: t["min"] / t["gp"], None),
+    "pts": (lambda t: t["pts"] / t["gp"], None),
+    "reb": (lambda t: t["reb"] / t["gp"], None),
+    "ast": (lambda t: t["ast"] / t["gp"], None),
+    "stl": (lambda t: t["stl"] / t["gp"], None),
+    "blk": (lambda t: t["blk"] / t["gp"], None),
+    "tov": (lambda t: t["tov"] / t["gp"], None),
+    "efg": (lambda t: (t["fgm"] + 0.5 * t["tpm"]) / t["fga"] if t["fga"] else None, ("fga", 5)),
+    "tpr": (lambda t: t["tpa"] / t["fga"] if t["fga"] else None, ("fga", 5)),
+    "tp": (lambda t: t["tpm"] / t["tpa"] if t["tpa"] else None, ("tpa", 2)),
+    "ftr": (lambda t: t["fta"] / t["fga"] if t["fga"] else None, ("fga", 5)),
+    "ftp": (lambda t: t["ftm"] / t["fta"] if t["fta"] else None, ("fta", 2)),
+}
+MIN_GP_SHARE = 0.25  # players need a quarter of the season's games to be compared
+# Older seasons list five positions; compare within three groups.
+POSITION_GROUP = {"PG": "G", "SG": "G", "G": "G", "SF": "F", "PF": "F", "F": "F", "GF": "F", "FC": "F", "C": "C"}
+
+
+def write_careers(players, current_year):
+    """Each current player's seasons, with percentiles among players at the same position that season."""
+    wanted = set(players)
+    careers = {pid: [] for pid in wanted}
+    for year in range(FIRST_SEASON, current_year + 1):
+        path = SEASONS_DIR / f"{year}.json"
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        cols = data["cols"]
+        rows = [dict(zip(cols, r)) for r in data["rows"]]
+        rows = [r for r in rows if r["gp"] > 0]
+        for r in rows:
+            r["pos"] = POSITION_GROUP.get(r["pos"], "?")
+        if not rows:
+            continue
+        min_gp = max(1, round(MIN_GP_SHARE * max(r["gp"] for r in rows)))
+        values = {}
+        for r in rows:
+            values[r["id"]] = {k: f(r) for k, (f, _) in CAREER_STATS.items()}
+
+        def qualifies(r, stat):
+            vol = CAREER_STATS[stat][1]
+            return r["gp"] >= min_gp and values[r["id"]][stat] is not None and (
+                vol is None or r[vol[0]] / r["gp"] >= vol[1])
+
+        pools = {}
+        for stat in CAREER_STATS:
+            for r in rows:
+                if qualifies(r, stat):
+                    pools.setdefault((stat, r["pos"]), []).append(values[r["id"]][stat])
+        for r in rows:
+            if r["id"] not in wanted:
+                continue
+            pct = {}
+            for stat in CAREER_STATS:
+                pool = pools.get((stat, r["pos"]), [])
+                if not qualifies(r, stat) or len(pool) < 2:
+                    continue
+                v = values[r["id"]][stat]
+                below = sum(1 for o in pool if (o > v if stat == "tov" else o < v))
+                equal = sum(1 for o in pool if abs(o - v) < 1e-9) - 1
+                pct[stat] = round((below + equal / 2) / (len(pool) - 1) * 100)
+            careers[r["id"]].append({
+                "season": data["season"], "team": r["team"], "pos": r["pos"], "gp": r["gp"],
+                "tot": [r[k] for k in ("min", "pts", "reb", "ast", "stl", "blk", "tov",
+                                        "fgm", "fga", "tpm", "tpa", "ftm", "fta")],
+                "pct": pct,
+            })
+    CAREERS_OUT.write_text(json.dumps({
+        "tot": ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"],
+        "players": {k: v for k, v in sorted(careers.items()) if v},
+    }, separators=(",", ":")))
+    print(f"Saved careers for {sum(1 for v in careers.values() if v)} players")
 
 
 def parse_players(summary, players):

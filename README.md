@@ -18,6 +18,7 @@ Use the menu at the top left to switch views (each has its own link):
 
 - **Team stats** (`/`): the table above. Click a team to see its games in the window. On phones the columns are split into Ratings, Shooting and Hustle groups so each fits the screen.
 - **Matchups** (`#matchups`): each upcoming game with both teams' records, the betting line (spread, over/under, moneyline) and stats side by side.
+- **Player pages** (`#player-<ESPN id>`): open from **View profile** in a player's chart on the Players view, or by tapping a name in a box score. Shows the player's photo and bio, every NBA season with position percentiles for that season, and a shot chart by court zone (FG% and share of shots, colored against the league average) for this season, the last month or the last 2 weeks.
 - **Live scores** (`#live`): today's and yesterday's games with quarter-by-quarter scores and team leaders. Click a game for its box score (MIN, FG, 3PT, FT, PTS, REB, AST for every player; "Show all stats" adds STL, BLK, TOV and PF), which also refreshes every 30 seconds during a live game. The page fetches ESPN's scoreboard directly in the browser and refreshes every 30 seconds while the view is open.
 - **Players** (`#players`): player leaders in MIN, eFG%, 3P rate, 3P%, FT rate, FT%, PTS, REB, OREB, AST, STL, BLK and TOV over the last week, 2 weeks, month or season, as totals or per game, with each stat's percentile among players at the same position (G, F, C) underneath. Per game lists players who played at least half of their team's games in that period, so injured players drop off. On phones the columns are split into Basics, Efficiency and Hustle groups. Click a player for a game-by-game bar chart of any stat with season and recent averages. Headshots load from ESPN.
 
@@ -31,7 +32,7 @@ To run it yourself:
 python3 scripts/fetch_nba.py
 ```
 
-This pulls final box scores from ESPN's public API into `data/nba/games.json`. It only downloads games it doesn't already have.
+This pulls final box scores from ESPN's public API into `data/nba/games.json`. It only downloads games it doesn't already have. It also keeps the data behind player pages: shot locations (`data/nba/shots/`, one file per month), league-wide stats for every season since 2003-04 (`data/nba/seasons/`, past seasons downloaded once), player bios (`data/nba/bios.json`) and each current player's career with percentiles (`data/nba/careers.json`).
 
 Team logos live in `assets/logos/nba/` (a light and a dark version per team). To re-download them:
 
