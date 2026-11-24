@@ -101,11 +101,29 @@ body {
 
 .wrap > * { min-width: 0; } /* let the wide table scroll inside its box */
 /* Team stats on phones: one stat group at a time, rank under the value */
-.seg.tgroup { display: none; }
+.seg.tgroup, .seg.pgroup { display: none; }
 @media (max-width: 760px) {
   #view-stats { display: grid; gap: 12px; }
   #view-stats > * { min-width: 0; }
-  .seg.tgroup { display: inline-flex; justify-self: start; }
+  .seg.tgroup, .seg.pgroup { display: inline-flex; justify-self: start; }
+  /* Players on phones: one stat group at a time */
+  #players-box[data-group="basic"] [data-g]:not([data-g="basic"]),
+  #players-box[data-group="eff"] [data-g]:not([data-g="eff"]),
+  #players-box[data-group="def"] [data-g]:not([data-g="def"]) { display: none; }
+  #players-box th small { display: none; }
+  #players-box th button { font-size: 13px; letter-spacing: 0.03em; }
+  #players-box th, #players-box td { padding-inline: 5px; }
+  #players-box th:first-child, #players-box td:first-child { padding-left: 6px; }
+  #players-box .player, #players-box .pbtn { gap: 5px; }
+  #players-box .prank { width: 1.4em; font-size: 11px; }
+  #players-box .shot { width: 28px; height: 28px; }
+  #players-box .pwho { max-width: 88px; }
+  #players-box .pname { white-space: normal; font-size: 13.5px; line-height: 1.2; overflow-wrap: anywhere; }
+  #players-box .pteam { font-size: 11.5px; }
+  #players-box td { font-size: 14px; }
+  #players-box th, #players-box td { padding-inline: 4px; }
+  /* The table fits the phone, so the chart just fills the row */
+  #players-box .pchart { width: auto; position: static; padding-inline: 10px; }
   #stats-box[data-group="ratings"] [data-g]:not([data-g="ratings"]),
   #stats-box[data-group="shooting"] [data-g]:not([data-g="shooting"]),
   #stats-box[data-group="hustle"] [data-g]:not([data-g="hustle"]) { display: none; }
@@ -583,7 +601,8 @@ tr.prow.open td { background: var(--head-bg); border-bottom-color: transparent; 
 tr.prow.open td.on { background: var(--edge-bg); }
 tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
 .pchart {
-  /* Stays in view even when the table scrolls sideways */
+  /* Stays in view even when the table scrolls sideways, and never widens the table */
+  contain: inline-size;
   position: sticky;
   left: 0;
   width: var(--panel-w, 100%);
@@ -736,7 +755,12 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
         </label>
         <span class="pqual" id="p-qual"></span>
       </div>
-      <div class="table-box">
+      <div class="seg pgroup" role="group" aria-label="Stat group">
+        <button type="button" data-pgroup="basic">Basics</button>
+        <button type="button" data-pgroup="eff">Efficiency</button>
+        <button type="button" data-pgroup="def">Defense</button>
+      </div>
+      <div class="table-box" id="players-box">
         <table class="ptable">
           <thead><tr id="p-head"></tr></thead>
           <tbody id="p-rows"><tr><td colspan="10" class="ploading">Loading players…</td></tr></tbody>
@@ -817,15 +841,15 @@ const state = {
 };
 const VIEWS = ["stats", "matchups", "players", "live"];
 const PSTATS = [
-  { key: "min", label: "MIN" },
-  { key: "efg", label: "eFG%", pct: true },
-  { key: "pts", label: "PTS" },
-  { key: "reb", label: "REB" },
-  { key: "oreb", label: "OREB" },
-  { key: "ast", label: "AST" },
-  { key: "stl", label: "STL" },
-  { key: "blk", label: "BLK" },
-  { key: "tov", label: "TOV" },
+  { key: "min", g: "basic", label: "MIN" },
+  { key: "efg", g: "eff", label: "eFG%", pct: true },
+  { key: "pts", g: "basic", label: "PTS" },
+  { key: "reb", g: "basic", label: "REB" },
+  { key: "oreb", g: "eff", label: "OREB" },
+  { key: "ast", g: "basic", label: "AST" },
+  { key: "stl", g: "def", label: "STL" },
+  { key: "blk", g: "def", label: "BLK" },
+  { key: "tov", g: "eff", label: "TOV" },
 ];
 const PLAYER_LIMIT = 50;
 // Box-score columns added up across a player's games (eFG% is worked out from fgm, fga and tpm).
@@ -1138,6 +1162,8 @@ function renderPlayers() {
   const body = document.getElementById("p-rows");
   const more = document.getElementById("p-more");
   document.querySelectorAll(".pmode button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pmode === state.pmode)));
+  document.getElementById("players-box").dataset.group = state.pgroup;
+  document.querySelectorAll(".pgroup button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pgroup === state.pgroup)));
 
   if (!state.players) {
     loadPlayers();
@@ -1158,7 +1184,7 @@ function renderPlayers() {
   head.innerHTML =
     `<th><button type="button" data-psort="name">Player <span class="arrow">${arrow("name")}</span></button></th>` +
     `<th class="${state.psort === "gp" ? "on" : ""}"><button type="button" data-psort="gp">GP <span class="arrow">${arrow("gp")}</span></button><small>games</small></th>` +
-    PSTATS.map(s => `<th class="${state.psort === s.key ? "on" : ""}"><button type="button" data-psort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.pct ? "shooting" : per ? "per game" : "total"}</small></th>`).join("");
+    PSTATS.map(s => `<th data-g="${s.g}" class="${state.psort === s.key ? "on" : ""}"><button type="button" data-psort="${s.key}">${s.label} <span class="arrow">${arrow(s.key)}</span></button><small>${s.pct ? "shooting" : per ? "per game" : "total"}</small></th>`).join("");
 
   const q = state.pq.trim().toLowerCase();
   let shown = q
@@ -1174,7 +1200,7 @@ function renderPlayers() {
     const row = `<tr class="prow${open ? " open" : ""}" data-pid="${r.id}">
       <td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${r.name}: show game-by-game chart"><div class="player"><span class="prank">${r.rank}</span>${headshot(r.id, r.name)}<div class="pwho"><span class="pname">${r.name}</span><span class="pteam">${logo(r.team)}${r.team}${r.pos ? ` · ${r.pos}` : ""}</span></div></div></button></td>
       <td class="${state.psort === "gp" ? "on" : "dim"}">${r.gp}</td>
-      ${PSTATS.map(s => `<td class="${state.psort === s.key ? "on" : ""}">${showStat(s, r[s.key])}</td>`).join("")}
+      ${PSTATS.map(s => `<td data-g="${s.g}" class="${state.psort === s.key ? "on" : ""}">${showStat(s, r[s.key])}</td>`).join("")}
     </tr>`;
     return open ? row + `<tr class="pchart-row"><td colspan="${cols}"><div class="pchart" id="pchart"></div></td></tr>` : row;
   }).join("")
@@ -1735,6 +1761,14 @@ document.getElementById("days").addEventListener("click", e => {
 
 state.n = load("st.n", 10);
 state.tgroup = ["ratings", "shooting", "hustle"].includes(load("st.tgroup", "ratings")) ? load("st.tgroup", "ratings") : "ratings";
+state.pgroup = ["basic", "eff", "def"].includes(load("st.pgroup", "basic")) ? load("st.pgroup", "basic") : "basic";
+document.querySelector(".pgroup").addEventListener("click", e => {
+  const b = e.target.closest("button[data-pgroup]");
+  if (!b) return;
+  state.pgroup = b.dataset.pgroup;
+  save("st.pgroup", state.pgroup);
+  render();
+});
 document.querySelector(".tgroup").addEventListener("click", e => {
   const b = e.target.closest("button[data-tgroup]");
   if (!b) return;
