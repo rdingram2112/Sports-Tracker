@@ -1,5 +1,7 @@
 # Sports Tracker
 
+Pick the sport with the menu at the top right: **NBA** or **College Football**.
+
 ## NBA trailing stats
 
 `index.html` shows every NBA team's stats over its last X games (5, 10, 15, the full season, or any number you type), each with the team's league rank for that window:
@@ -47,3 +49,9 @@ python3 -m http.server 8000
 ```
 
 Then open http://localhost:8000.
+
+## College football
+
+**Matchups** (`#cfb`) shows this week's and next week's FBS games with rankings (College Football Playoff when published, otherwise AP Top 25), records, conference, TV, the betting line (spread, over/under, moneyline) and points scored/allowed per game with national ranks. Filter to Top 25 games or any conference.
+
+`scripts/fetch_cfb.py` writes `data/cfb/matchups.json`; the same daily GitHub Action runs it each morning and mid-afternoon Eastern.
