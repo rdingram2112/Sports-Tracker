@@ -579,6 +579,11 @@ tbody tr:hover td { background: var(--head-bg); }
   color: var(--fg);
 }
 .pqual { color: var(--muted); font-size: 13px; }
+/* Value with the position percentile underneath */
+.ptable td .pv { display: block; }
+.ptable td .pp { display: block; font-size: 11px; line-height: 1.2; color: var(--muted); font-weight: 500; }
+.ptable td .pp.hi { color: var(--good-fg); font-weight: 600; }
+.ptable td .pp.lo { color: var(--bad-fg); font-weight: 600; }
 .ptable th:first-child, .ptable td:first-child { text-align: left; }
 .ptable td { padding-block: 7px; }
 .ptable th.on button { color: var(--accent); }
@@ -761,6 +766,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
           <input id="p-search" type="search" placeholder="Find a player or team" autocomplete="off">
         </label>
         <span class="pqual" id="p-qual"></span>
+        <span class="pqual pnote">Small numbers are percentiles vs. the same position (G, F or C).</span>
       </div>
       <div class="seg pgroup" role="group" aria-label="Stat group">
         <button type="button" data-pgroup="basic">Basics</button>
@@ -809,6 +815,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
 
   <div class="notes" id="notes-players" hidden>
     <p>Time periods count back from the most recent game day: last week is the last 7 days, last 2 weeks the last 14, and last month the last 30. Per game lists only players who played in at least half of their team's games in the period, so players who have been out injured drop off; Totals lists everyone who played. Click a column to sort by it, and click again to reverse.</p>
+    <p>The small number under each stat is the player's percentile among players at the same position (guards, forwards or centers) in the same period and mode: 90th means better than 90% of them. Green is 80th and up, red 20th and below. For turnovers, a high percentile means fewer turnovers. Players below the shooting minimums below get no percentile for that stat.</p>
     <p>Shooting stats are totaled across the period: eFG% = (FGM + 0.5 × 3PM) ÷ FGA, 3P% = 3PM ÷ 3PA, 3P rate = 3PA ÷ FGA, FT rate = FTA ÷ FGA (how often a player gets to the line), and FT% = FTM ÷ FTA. When sorting by one of them, low-volume players go after everyone else: under 5 shots a game for eFG%, 3P rate and FT rate, and under 2 attempts a game for 3P% and FT%.</p>
     <p>Team is the player's team in his most recent game in the period. Photos and box scores come from ESPN, updated every morning.</p>
   </div>
@@ -828,8 +835,8 @@ const STATS = [
   { key: "ortg", g: "ratings", label: "ORTG", hint: "off. rating", higherBetter: true },
   { key: "drtg", g: "ratings", label: "DRTG", hint: "def. rating", higherBetter: false },
   { key: "efg", g: "shooting", label: "eFG%", hint: "effective FG", pct: true, higherBetter: true, matchup: true, groupStart: true },
-  { key: "tp", g: "shooting",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
   { key: "tpr", g: "shooting", label: "3P Rate", hint: "3PA ÷ FGA", pct: true, higherBetter: true, matchup: true },
+  { key: "tp", g: "shooting",  label: "3P%",  hint: "three-point", pct: true, higherBetter: true, matchup: true },
   { key: "oreb", g: "hustle", label: "OREB", hint: "per game", higherBetter: true, matchup: true },
   { key: "fta", g: "shooting", label: "FTA",  hint: "per game", higherBetter: true, matchup: true },
   { key: "ftp", g: "shooting", label: "FT%",  hint: "free throw", pct: true, higherBetter: true, matchup: true },
@@ -855,8 +862,8 @@ const pctOf = (num, den) => den ? num / den * 100 : null;
 const PSTATS = [
   { key: "min", g: "basic", label: "MIN" },
   { key: "efg", g: "eff", label: "eFG%", pct: true, calc: efgOf, volume: ["fga", 5], shots: t => `${t.fgm}/${t.fga} FG` },
-  { key: "tp", g: "eff", label: "3P%", pct: true, calc: t => pctOf(t.tpm, t.tpa), volume: ["tpa", 2], shots: t => `${t.tpm}/${t.tpa} 3PT` },
   { key: "tpr", g: "eff", label: "3P Rate", pct: true, calc: t => pctOf(t.tpa, t.fga), volume: ["fga", 5], shots: t => `${t.tpa} of ${t.fga} shots were threes` },
+  { key: "tp", g: "eff", label: "3P%", pct: true, calc: t => pctOf(t.tpm, t.tpa), volume: ["tpa", 2], shots: t => `${t.tpm}/${t.tpa} 3PT` },
   { key: "ftr", g: "eff", label: "FT Rate", pct: true, calc: t => pctOf(t.fta, t.fga), volume: ["fga", 5], shots: t => `${t.fta} FTA, ${t.fga} FGA` },
   { key: "ftp", g: "eff", label: "FT%", pct: true, calc: t => pctOf(t.ftm, t.fta), volume: ["fta", 2], shots: t => `${t.ftm}/${t.fta} FT` },
   { key: "pts", g: "basic", label: "PTS" },
@@ -1171,8 +1178,41 @@ function playerLeaders() {
     return ((a[k] ?? -1) - (b[k] ?? -1)) * sign || b.pts - a.pts || a.name.localeCompare(b.name);
   });
   list.forEach((r, i) => { r.rank = i + 1; });
+  addPercentiles(list);
   return { list, start };
 }
+
+// Each stat's percentile among players at the same position (G, F, C) in the current list.
+// For turnovers, fewer is better, so the order is flipped. Low-volume shooters get no percentile
+// for that shooting stat and aren't part of anyone else's comparison.
+function addPercentiles(list) {
+  const posGroup = r => ["G", "F", "C"].includes(r.pos) ? r.pos : "?";
+  for (const st of PSTATS) {
+    const byPos = {};
+    for (const r of list) {
+      r.pctl ||= {};
+      if (r[st.key] == null || r.low?.[st.key]) continue;
+      (byPos[posGroup(r)] ||= []).push(r);
+    }
+    for (const pool of Object.values(byPos)) {
+      const n = pool.length;
+      for (const r of pool) {
+        if (n < 2) { r.pctl[st.key] = null; continue; }
+        let below = 0, equal = 0;
+        for (const o of pool) {
+          if (o === r) continue;
+          const d = st.key === "tov" ? r[st.key] - o[st.key] : o[st.key] - r[st.key];
+          if (Math.abs(d) < 1e-9) equal++; else if (d < 0) below++;
+        }
+        r.pctl[st.key] = Math.round((below + equal / 2) / (n - 1) * 100);
+      }
+    }
+  }
+}
+const ordinal = n => {
+  const v = n % 100;
+  return n + (v >= 11 && v <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" })[n % 10] || "th");
+};
 
 function renderPlayers() {
   const head = document.getElementById("p-head");
@@ -1217,7 +1257,11 @@ function renderPlayers() {
     const row = `<tr class="prow${open ? " open" : ""}" data-pid="${r.id}">
       <td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${r.name}: show game-by-game chart"><div class="player"><span class="prank">${r.rank}</span>${headshot(r.id, r.name)}<div class="pwho"><span class="pname">${r.name}</span><span class="pteam">${logo(r.team)}${r.team}${r.pos ? ` · ${r.pos}` : ""}</span></div></div></button></td>
       <td class="${state.psort === "gp" ? "on" : "dim"}">${r.gp}</td>
-      ${PSTATS.map(s => `<td data-g="${s.g}" class="${state.psort === s.key ? "on" : ""}">${showStat(s, r[s.key])}</td>`).join("")}
+      ${PSTATS.map(s => {
+        const pc = r.pctl?.[s.key];
+        const tone = pc == null ? "" : pc >= 80 ? " hi" : pc <= 20 ? " lo" : "";
+        return `<td data-g="${s.g}" class="${state.psort === s.key ? "on" : ""}"><span class="pv">${showStat(s, r[s.key])}</span><span class="pp${tone}">${pc == null ? "&nbsp;" : ordinal(pc)}</span></td>`;
+      }).join("")}
     </tr>`;
     return open ? row + `<tr class="pchart-row"><td colspan="${cols}"><div class="pchart" id="pchart"></div></td></tr>` : row;
   }).join("")
