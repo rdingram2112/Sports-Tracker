@@ -514,6 +514,40 @@ tbody tr:hover td { background: var(--head-bg); }
   max-width: 70vw;
 }
 .cfb-days { display: grid; gap: 22px; }
+.week-pick { display: inline-flex; align-items: center; gap: 6px; }
+.week-pick button {
+  font: 600 18px var(--font-body);
+  width: 36px; height: 36px;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.week-pick button:disabled { opacity: 0.35; cursor: default; }
+.week-pick button.this-week { width: auto; padding: 0 10px; font-size: 14px; }
+.week-pick select {
+  font: 600 15px var(--font-body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  max-width: 62vw;
+}
+.cfb-statbar { justify-content: flex-start; }
+.cfb-statbar .label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 14px;
+  color: var(--muted);
+}
+.cfb-check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.cfb-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.cfb-statnote { color: var(--muted); font-size: 13px; flex-basis: 100%; }
+.cfb-team.won .nm b, .cfb-team.won .sc { color: var(--fg); }
 .cfb-day { display: grid; gap: 10px; }
 .cfb-day h2 { margin: 0; font: 700 20px var(--font-display); }
 .cfb-day h2 small { font: 500 14px var(--font-body); color: var(--muted); margin-left: 6px; }
@@ -933,11 +967,26 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
   <section id="view-cfb" hidden>
     <div class="cfb">
       <div class="cfb-controls">
-        <div class="days" id="cfb-weeks" role="group" aria-label="Week"></div>
+        <div class="week-pick">
+          <button type="button" id="cfb-prev" aria-label="Previous week">‹</button>
+          <label for="cfb-week"><span hidden>Week</span><select id="cfb-week"></select></label>
+          <button type="button" id="cfb-next" aria-label="Next week">›</button>
+          <button type="button" id="cfb-today" class="this-week" hidden>This week</button>
+        </div>
         <label class="cfb-filter" for="cfb-filter">
           <span>Show</span>
           <select id="cfb-filter"></select>
         </label>
+      </div>
+      <div class="cfb-controls cfb-statbar">
+        <span class="label">Stats from</span>
+        <div class="seg cfb-span" role="group" aria-label="Games counted in team stats">
+          <button type="button" data-cspan="0">Season</button>
+          <button type="button" data-cspan="3">Last 3</button>
+          <button type="button" data-cspan="5">Last 5</button>
+        </div>
+        <label class="cfb-check" for="cfb-conf"><input type="checkbox" id="cfb-conf"> Conference games only</label>
+        <span class="cfb-statnote" id="cfb-statnote"></span>
       </div>
       <div id="cfb-games" class="cfb-days"></div>
     </div>
@@ -997,8 +1046,8 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
   </dialog>
 
   <div class="notes" id="notes-cfb" hidden>
-    <p>Rankings are the College Football Playoff rankings once they're released, and the AP Top 25 until then. Top 25 shows games with at least one ranked team; a conference shows games involving any of its teams. Records, rankings and betting lines (spread, over/under and moneyline, usually DraftKings via ESPN) are refreshed each morning and mid-afternoon Eastern, so they're snapshots, not live odds.</p>
-    <p>PTS/G (points scored per game) and OPP/G (points allowed per game) cover this season's completed games, with each team's rank among all FBS teams; the shaded side is better. Kickoff times are in your local time zone.</p>
+    <p>Rankings are ESPN's for each game: the College Football Playoff rankings once they're released, and the AP Top 25 before that, so past weeks show each team's ranking at the time. Top 25 shows games with at least one ranked team; a conference shows games involving any of its teams. Records, rankings and betting lines (spread, over/under and moneyline, usually DraftKings via ESPN) are refreshed each morning and mid-afternoon Eastern, so they're snapshots, not live odds.</p>
+    <p>Team stats are per game: PTS/G and OPP/G (points scored and allowed) and YDS/G and OPP YDS (total yards gained and allowed), with each team's rank among FBS teams. They count completed games before the selected week (or all games so far for future weeks), limited by "Stats from": the whole season or each team's last 3 or 5 games, and optionally conference games only. The shaded side is better. Past games show the last betting line saved before kickoff when one was captured; ESPN removes lines once games start. Kickoff times are in your local time zone.</p>
   </div>
 
   <div class="notes" id="notes-live" hidden>
@@ -2201,73 +2250,130 @@ document.querySelector(".shotspan").addEventListener("click", e => {
 });
 
 /* ---------- college football ---------- */
-const cfb = { data: null, loading: false, error: false, week: 0, filter: load("st.cfbFilter", "top25") };
+const cfb = {
+  data: null, loading: false, error: false,
+  week: null,                                   // index into data.weeks; null = current week
+  filter: load("st.cfbFilter", "top25"),        // all | top25 | conference id
+  span: [0, 3, 5].includes(load("st.cfbSpan", 0)) ? load("st.cfbSpan", 0) : 0,
+  confOnly: load("st.cfbConf", false) === true,
+};
 
 function loadCfb() {
   if (cfb.data || cfb.loading) return;
   cfb.loading = true;
-  fetch("data/cfb/matchups.json", { cache: "no-cache" })
+  fetch("data/cfb/season.json", { cache: "no-cache" })
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(d => { cfb.data = d; })
+    .then(d => {
+      const c = Object.fromEntries(d.resultCols.map((k, i) => [k, i]));
+      d.rows = d.results.map(r => ({ week: r[c.week], team: r[c.team], conf: r[c.confGame] === 1, pf: r[c.pf], pa: r[c.pa], yds: r[c.yds], oyds: r[c.oppYds] }));
+      cfb.data = d;
+    })
     .catch(() => { cfb.error = true; })
     .finally(() => { cfb.loading = false; if (state.view === "cfb") render(); });
 }
 
-const cfbLogo = t => t?.logo
-  ? `<span class="logo"><img class="logo-light" src="${esc(t.logo)}" alt="" width="34" height="34" loading="lazy"><img class="logo-dark" src="${esc(t.logo.replace("/500/", "/500-dark/"))}" alt="" width="34" height="34" loading="lazy"></span>`
-  : `<span class="logo"></span>`;
+// ESPN's schedule leaves some FCS logos blank; its standard logo address still works for them.
+const cfbLogo = t => {
+  const src = t?.logo || (t?.id ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${encodeURIComponent(t.id)}.png` : "");
+  return src
+    ? `<span class="logo"><img class="logo-light" src="${esc(src)}" alt="" width="34" height="34" loading="lazy"><img class="logo-dark" src="${esc(src.replace("/500/", "/500-dark/"))}" alt="" width="34" height="34" loading="lazy"></span>`
+    : `<span class="logo"></span>`;
+};
 
-function cfbFilterMatches(g) {
-  const f = cfb.filter;
-  if (f === "all") return true;
-  if (f === "top25") return !!(cfb.data.ranks[g.away?.id] || cfb.data.ranks[g.home?.id]);
-  return String(g.away?.conf) === f || String(g.home?.conf) === f;
+// Team stats entering the selected week: completed games before it, limited by the stat filters.
+const CFB_STATS = [
+  { key: "ppg", label: "PTS/G", higher: true },
+  { key: "oppg", label: "OPP/G", higher: false },
+  { key: "ypg", label: "YDS/G", higher: true },
+  { key: "oypg", label: "OPP YDS/G", short: "OPP YDS", higher: false },
+];
+function cfbTeamStats(weekIdx) {
+  const d = cfb.data;
+  const isFbs = id => !!d.conferences[d.teams[id]?.conf];
+  const byTeam = {};
+  for (const r of d.rows) {
+    if (r.week >= weekIdx) continue;
+    if (cfb.confOnly && !r.conf) continue;
+    (byTeam[r.team] ||= []).push(r);
+  }
+  const stats = {};
+  for (const [id, list] of Object.entries(byTeam)) {
+    const games = cfb.span ? list.slice(-cfb.span) : list;
+    const withYds = games.filter(g => g.yds != null && g.oyds != null);
+    const sum = (arr, k) => arr.reduce((a, g) => a + g[k], 0);
+    stats[id] = {
+      gp: games.length,
+      ppg: sum(games, "pf") / games.length,
+      oppg: sum(games, "pa") / games.length,
+      ypg: withYds.length ? sum(withYds, "yds") / withYds.length : null,
+      oypg: withYds.length ? sum(withYds, "oyds") / withYds.length : null,
+    };
+  }
+  // National ranks among FBS teams; ties share the better rank.
+  const fbs = Object.keys(stats).filter(isFbs);
+  for (const st of CFB_STATS) {
+    const vals = fbs.map(id => stats[id][st.key]).filter(v => v != null);
+    for (const id of fbs) {
+      const v = stats[id][st.key];
+      if (v == null) continue;
+      stats[id][st.key + "Rank"] = 1 + vals.filter(o => st.higher ? o > v : o < v).length;
+    }
+  }
+  return { stats, total: fbs.length };
 }
 
-function cfbCard(g) {
+function cfbFilterMatches(g) {
   const d = cfb.data;
-  const conf = id => d.conferences[String(id)]?.short || "";
+  const f = cfb.filter;
+  if (!g.away || !g.home) return f === "all";
+  if (f === "all") return true;
+  if (f === "top25") return !!(g.away.rank || g.home.rank);
+  return d.teams[g.away.id]?.conf === f || d.teams[g.home.id]?.conf === f;
+}
+
+function cfbCard(g, ts) {
+  const d = cfb.data;
+  const team = side => ({ ...(d.teams[side?.id] || { name: "TBD" }), ...side });
+  const A = team(g.away), Hm = team(g.home);
+  const conf = id => d.conferences[id]?.short || "";
   const started = g.state !== "pre";
-  const a = Number(g.away?.score), h = Number(g.home?.score);
+  const a = Number(A.score), h = Number(Hm.score);
   const tbd = /TBD/i.test(g.detail);
   let when;
   if (g.state === "in") when = `<span class="live">Live · ${esc(g.detail)}</span>`;
   else if (g.state === "post") when = esc(g.detail || "Final");
   else when = tbd ? "Time TBD" : new Date(g.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const tags = [g.tv, g.note || (g.neutral ? "Neutral site" : ""), g.confGame ? "Conference game" : ""].filter(Boolean);
+  const tags = [g.state === "pre" ? g.tv : "", g.note || (g.neutral ? "Neutral site" : ""), g.confGame ? "Conference game" : ""].filter(Boolean);
 
-  const row = (t, trailing) => {
-    if (!t) return "";
-    const rk = d.ranks[t.id];
-    return `<div class="cfb-team">${cfbLogo(t)}
-      <div class="nm"><b>${rk ? `<span class="rk">#${rk}</span>` : ""}${esc(t.name)}</b><span>${[t.record, conf(t.conf)].filter(Boolean).map(esc).join(" · ")}</span></div>
-      ${started ? `<span class="sc${trailing ? " trailing" : ""}">${esc(t.score ?? "")}</span>` : "<span></span>"}
+  const row = (t, result) => `<div class="cfb-team${result === "won" ? " won" : ""}">${cfbLogo(t)}
+      <div class="nm"><b>${t.rank ? `<span class="rk">#${t.rank}</span>` : ""}${esc(t.name)}</b><span>${[t.record, conf(t.conf)].filter(Boolean).map(esc).join(" · ")}</span></div>
+      ${started ? `<span class="sc${result === "lost" ? " trailing" : ""}">${esc(t.score ?? "")}</span>` : "<span></span>"}
     </div>`;
-  };
+  const res = (mine, theirs) => !started ? "" : mine > theirs ? "won" : mine < theirs ? "lost" : "";
 
-  // Line strip: spread, over/under, moneylines
   const L = g.line;
   const nice = v => String(v).replace(/-/g, "−");
-  const ml = L ? [L.mlAway && `${g.away.abbr} ${nice(L.mlAway)}`, L.mlHome && `${g.home.abbr} ${nice(L.mlHome)}`].filter(Boolean).join(" · ") : "";
+  const ml = L ? [L.mlAway && `${A.abbr} ${nice(L.mlAway)}`, L.mlHome && `${Hm.abbr} ${nice(L.mlHome)}`].filter(Boolean).join(" · ") : "";
   const line = L
-    ? `<div class="line-strip"><div><span class="lk">Spread</span><b>${L.spread ? nice(L.spread) : "—"}</b></div><div><span class="lk">O/U</span><b>${L.total ?? "—"}</b></div><div><span class="lk">Moneyline</span><b>${ml || "—"}</b></div></div>`
-    : `<div class="line-strip none">${g.state === "pre" ? "Line not posted yet" : "No line"}</div>`;
+    ? `<div class="line-strip"><div><span class="lk">${started ? "Spread (pre-game)" : "Spread"}</span><b>${L.spread ? nice(L.spread) : "—"}</b></div><div><span class="lk">O/U</span><b>${L.total ?? "—"}</b></div><div><span class="lk">Moneyline</span><b>${ml || "—"}</b></div></div>`
+    : g.state === "pre" ? `<div class="line-strip none">Line not posted yet</div>` : "";
 
-  // Scoring comparison with national ranks; the better side is shaded.
-  const sa = d.teamStats[g.away?.id], sh = d.teamStats[g.home?.id];
-  const n = d.fbsTeams;
+  const sa = ts.stats[A.id], sh = ts.stats[Hm.id];
+  const n = ts.total;
   const rankCls = r => r <= 25 ? "good" : r > n - 25 ? "bad" : "";
-  const statRow = (label, key) => {
-    if (!sa || !sh) return "";
-    const ra = sa[key + "Rank"], rh = sh[key + "Rank"];
-    const cell = (s, r, side, edge) => `<div class="val ${side}${edge ? " edge" : ""}"><span class="cell">${s[key].toFixed(1)}<span class="rank ${rankCls(r)}">(${r})</span></span></div>`;
-    return `<div class="mrow">${cell(sa, ra, "away", ra < rh)}<div class="stat">${label}</div>${cell(sh, rh, "home", rh < ra)}</div>`;
+  const statRow = st => {
+    const va = sa?.[st.key], vh = sh?.[st.key];
+    if (va == null || vh == null) return "";
+    const ra = sa[st.key + "Rank"], rh = sh[st.key + "Rank"];
+    const cell = (v, r, side, edge) => `<div class="val ${side}${edge ? " edge" : ""}"><span class="cell">${v.toFixed(1)}${r ? `<span class="rank ${rankCls(r)}">(${r})</span>` : ""}</span></div>`;
+    const better = st.higher ? va > vh : va < vh, worse = st.higher ? va < vh : va > vh;
+    return `<div class="mrow">${cell(va, ra, "away", better)}<div class="stat">${st.short || st.label}</div>${cell(vh, rh, "home", worse)}</div>`;
   };
-  const stats = sa && sh ? statRow("PTS/G", "ppg") + statRow("OPP/G", "oppg") : "";
+  const stats = sa && sh ? CFB_STATS.map(statRow).join("") + `<div class="mrow gp"><div class="val away">${sa.gp} games</div><div class="stat">GP</div><div class="val home">${sh.gp} games</div></div>` : "";
 
   return `<article class="card cfb-card">
     <div class="card-time"><span>${when}</span><span class="tag">${tags.map(esc).join(" · ")}</span></div>
-    <div class="cfb-teams">${row(g.away, started && a < h)}<div class="cfb-at">${g.neutral ? "VS" : "AT"}</div>${row(g.home, started && h < a)}</div>
+    <div class="cfb-teams">${row(A, res(a, h))}<div class="cfb-at">${g.neutral ? "VS" : "AT"}</div>${row(Hm, res(h, a))}</div>
     ${line}
     ${stats}
   </article>`;
@@ -2277,53 +2383,81 @@ function renderCfb() {
   const box = document.getElementById("cfb-games");
   if (!cfb.data) {
     loadCfb();
-    box.innerHTML = `<div class="empty">${cfb.error ? "Couldn't load the college football data (data/cfb/matchups.json)." : "Loading games…"}</div>`;
+    box.innerHTML = `<div class="empty">${cfb.error ? "Couldn't load the college football data (data/cfb/season.json)." : "Loading games…"}</div>`;
     return;
   }
   const d = cfb.data;
+  if (cfb.week == null || cfb.week >= d.weeks.length) cfb.week = d.current;
+  const wi = cfb.week;
+  const week = d.weeks[wi];
   document.getElementById("season").textContent = `College football · ${d.season} season`;
-  document.getElementById("updated").textContent = d.poll ? `Rankings: ${d.poll.name} (${d.poll.week}).` : "Rankings aren't out yet.";
+  document.getElementById("updated").textContent = "Rankings are the College Football Playoff rankings once released (AP Top 25 before that), as of each game.";
 
-  // Week tabs
-  if (cfb.week >= d.weeks.length) cfb.week = 0;
-  document.getElementById("cfb-weeks").innerHTML = d.weeks.map((w, i) =>
-    `<button type="button" data-cweek="${i}" aria-pressed="${i === cfb.week}">${i === 0 ? "This week" : "Next week"}<small>${esc(w.label)}</small></button>`).join("");
+  // Week picker
+  const wsel = document.getElementById("cfb-week");
+  if (wsel.options.length !== d.weeks.length) {
+    wsel.innerHTML = d.weeks.map((w, i) => `<option value="${i}">${esc(w.label)}${w.dates ? ` · ${esc(w.dates)}` : ""}</option>`).join("");
+  }
+  wsel.value = String(wi);
+  document.getElementById("cfb-prev").disabled = wi <= 0;
+  document.getElementById("cfb-next").disabled = wi >= d.weeks.length - 1;
+  document.getElementById("cfb-today").hidden = wi === d.current;
 
-  // Filter menu: All, Top 25, then conferences
+  // Game filter
   const sel = document.getElementById("cfb-filter");
   const confs = Object.entries(d.conferences).sort((x, y) => x[1].short.localeCompare(y[1].short));
   const opts = [["all", "All FBS games"], ["top25", "Top 25 games"], ...confs.map(([id, c]) => [id, c.short])];
   if (!opts.some(o => o[0] === cfb.filter)) cfb.filter = "top25";
-  sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  if (sel.options.length !== opts.length) sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   sel.value = cfb.filter;
 
-  const week = d.weeks[cfb.week];
+  // Stat filters
+  document.querySelectorAll(".cfb-span button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.cspan) === cfb.span)));
+  document.getElementById("cfb-conf").checked = cfb.confOnly;
+  const statWeek = wi > d.current ? d.weeks.length : wi; // future weeks: every completed game so far
+  const ts = cfbTeamStats(statWeek);
+  const scope = [cfb.span ? `last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
+  document.getElementById("cfb-statnote").textContent = wi === 0
+    ? "Stats start after week 1."
+    : `Team stats use ${scope} ${wi > d.current ? "played so far" : `before ${week.label}`}. Ranks are among all ${ts.total} FBS teams.`;
+
   const games = (week?.games || []).filter(cfbFilterMatches);
   if (!games.length) {
-    box.innerHTML = `<div class="empty">No ${cfb.filter === "top25" ? "Top 25 " : ""}games ${cfb.week === 0 ? "this week" : "next week"}${["all", "top25"].includes(cfb.filter) ? "" : " for this conference"} yet.</div>`;
+    box.innerHTML = `<div class="empty">No ${cfb.filter === "top25" ? "Top 25 " : ""}games in ${esc(week?.label || "this week")}${["all", "top25"].includes(cfb.filter) ? "" : " for this conference"}.</div>`;
     return;
   }
-  // Group by local calendar day; Top 25 sorts ranked matchups first within a day.
   const byDay = new Map();
   for (const g of games) {
-    const key = /TBD/i.test(g.detail) ? "TBD" : new Date(g.start).toDateString();
+    const key = /TBD/i.test(g.detail) && g.state === "pre" ? "TBD" : new Date(g.start).toDateString();
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(g);
   }
   box.innerHTML = [...byDay.entries()].map(([key, list]) => {
     const title = key === "TBD" ? "Date and time TBD" : new Date(key).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
     return `<section class="cfb-day"><h2>${title}<small>${list.length} game${list.length === 1 ? "" : "s"}</small></h2>
-      <div class="cards">${list.map(cfbCard).join("")}</div></section>`;
+      <div class="cards">${list.map(g => cfbCard(g, ts)).join("")}</div></section>`;
   }).join("");
 }
 
-document.getElementById("cfb-weeks").addEventListener("click", e => {
-  const b = e.target.closest("button[data-cweek]");
-  if (b) { cfb.week = Number(b.dataset.cweek); render(); }
-});
+document.getElementById("cfb-week").addEventListener("change", e => { cfb.week = Number(e.target.value); render(); });
+document.getElementById("cfb-today").addEventListener("click", () => { if (cfb.data) { cfb.week = cfb.data.current; render(); } });
+document.getElementById("cfb-prev").addEventListener("click", () => { if (cfb.week > 0) { cfb.week--; render(); } });
+document.getElementById("cfb-next").addEventListener("click", () => { if (cfb.data && cfb.week < cfb.data.weeks.length - 1) { cfb.week++; render(); } });
 document.getElementById("cfb-filter").addEventListener("change", e => {
   cfb.filter = e.target.value;
   save("st.cfbFilter", cfb.filter);
+  render();
+});
+document.querySelector(".cfb-span").addEventListener("click", e => {
+  const b = e.target.closest("button[data-cspan]");
+  if (!b) return;
+  cfb.span = Number(b.dataset.cspan);
+  save("st.cfbSpan", cfb.span);
+  render();
+});
+document.getElementById("cfb-conf").addEventListener("change", e => {
+  cfb.confOnly = e.target.checked;
+  save("st.cfbConf", cfb.confOnly);
   render();
 });
 

@@ -52,6 +52,8 @@ Then open http://localhost:8000.
 
 ## College football
 
-**Matchups** (`#cfb`) shows this week's and next week's FBS games with rankings (College Football Playoff when published, otherwise AP Top 25), records, conference, TV, the betting line (spread, over/under, moneyline) and points scored/allowed per game with national ranks. Filter to Top 25 games or any conference.
+**Matchups** (`#cfb`): pick any week of the season (‹ › or the week menu). Past weeks show final scores, the current week shows upcoming games with the betting line (spread, over/under, moneyline), and future weeks fill in as ESPN posts them. Rankings are ESPN's for each game (CFP once released, AP before). Filter to Top 25 games or any conference.
 
-`scripts/fetch_cfb.py` writes `data/cfb/matchups.json`; the same daily GitHub Action runs it each morning and mid-afternoon Eastern.
+Each card compares the two teams' points and total yards per game, scored and allowed, with national ranks among FBS teams. "Stats from" limits those to the whole season or each team's last 3 or 5 games, and optionally conference games only; they count games played before the selected week.
+
+`scripts/fetch_cfb.py` writes `data/cfb/season.json` (every week's games plus a row per team per completed game). Box scores are downloaded once per game (`data/cfb/boxscores.json`), and the last betting line seen before kickoff is kept (`data/cfb/lines.json`) because ESPN removes lines once games start. The daily GitHub Action runs it each morning and mid-afternoon Eastern.
