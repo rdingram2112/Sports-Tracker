@@ -562,6 +562,11 @@ tbody tr:hover td { background: var(--head-bg); }
 .cfb-team .nm span { font-size: 12px; color: var(--muted); }
 .cfb-team .sc { font: 700 24px var(--font-display); font-variant-numeric: tabular-nums; }
 .cfb-team .sc.trailing { color: var(--muted); }
+.cfb-card .mhead { background: var(--head-bg); }
+.cfb-card .mhead .val { align-items: center; gap: 6px; padding-block: 6px; }
+.cfb-card .mhead .val b { font: 700 15px var(--font-display); letter-spacing: 0.03em; }
+.cfb-card .mhead .logo { width: 20px; height: 20px; }
+.cfb-card .mhead .stat { font-size: 11px; }
 .cfb-at { font: 600 12px var(--font-display); color: var(--muted); letter-spacing: 0.06em; padding-left: 44px; }
 
 /* Player page */
@@ -2369,7 +2374,10 @@ function cfbCard(g, ts) {
     const better = st.higher ? va > vh : va < vh, worse = st.higher ? va < vh : va > vh;
     return `<div class="mrow">${cell(va, ra, "away", better)}<div class="stat">${st.short || st.label}</div>${cell(vh, rh, "home", worse)}</div>`;
   };
-  const stats = sa && sh ? CFB_STATS.map(statRow).join("") + `<div class="mrow gp"><div class="val away">${sa.gp} games</div><div class="stat">GP</div><div class="val home">${sh.gp} games</div></div>` : "";
+  // Column header so it's clear which side is which team
+  const miniLogo = t => cfbLogo(t).replace(/width="34" height="34"/g, 'width="20" height="20"');
+  const head = `<div class="mrow mhead"><div class="val away">${miniLogo(A)}<b>${esc(A.abbr || A.name)}</b></div><div class="stat">Per game</div><div class="val home"><b>${esc(Hm.abbr || Hm.name)}</b>${miniLogo(Hm)}</div></div>`;
+  const stats = sa && sh ? head + CFB_STATS.map(statRow).join("") + `<div class="mrow gp"><div class="val away">${sa.gp} games</div><div class="stat">GP</div><div class="val home">${sh.gp} games</div></div>` : "";
 
   return `<article class="card cfb-card">
     <div class="card-time"><span>${when}</span><span class="tag">${tags.map(esc).join(" · ")}</span></div>
