@@ -9,6 +9,10 @@ Writes data/cfb/season.json with:
   - one row per team per completed game (points and total yards for and against),
     which the page uses to work out per-game stats for any filter
 
+EPA (expected points added) per play, per dropback and per rush, for offense and defense,
+comes from CollegeFootballData.com (garbage time excluded). It needs a free API key in the
+CFBD_API_KEY environment variable; without one, the last saved EPA (data/cfb/epa.json) is kept.
+
 Also keeps two caches so each game is only downloaded once:
   data/cfb/boxscores.json  total yards per team for completed games
   data/cfb/lines.json      the last betting line seen before each game (ESPN drops lines after kickoff)
@@ -17,7 +21,10 @@ Usage:
     python3 scripts/fetch_cfb.py
 """
 import json
+import os
+import re
 import sys
+import unicodedata
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -29,6 +36,11 @@ OUT = DIR / "season.json"
 BOX_CACHE = DIR / "boxscores.json"
 LINE_CACHE = DIR / "lines.json"
 FBS = 80
+CFBD = "https://api.collegefootballdata.com"
+EPA_OUT = DIR / "epa.json"
+# Per team-game EPA columns: total EPA and play counts, offense then defense.
+EPA_COLS = ["offPlays", "offEpa", "offPassPlays", "offPassEpa", "offRushPlays", "offRushEpa",
+            "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa"]
 
 
 def get_json(url, retries=3):
@@ -91,6 +103,69 @@ def calendar_weeks(scoreboard):
             weeks.append({"stype": int(stype), "week": int(e["value"]), "label": e.get("label") or e.get("alternateLabel"),
                           "dates": e.get("detail", ""), "start": e.get("startDate"), "end": e.get("endDate")})
     return weeks
+
+
+def norm_name(name):
+    """Loose school-name key so ESPN and CollegeFootballData names line up (accents, punctuation)."""
+    name = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "", name)
+
+
+def fetch_epa(year, games_by_id, teams):
+    """{"gameId|espnTeamId": [EPA_COLS...]} from CollegeFootballData's advanced game stats.
+
+    Passing plays include sacks (so they're dropbacks); QB scrambles can't be told apart from
+    designed runs in public play-by-play, so they count as rushes.
+    """
+    key = os.environ.get("CFBD_API_KEY")
+    if not key:
+        print("No CFBD_API_KEY set; keeping the saved EPA.")
+        return None
+    rows = []
+    for stype in ("regular", "postseason"):
+        req = urllib.request.Request(f"{CFBD}/stats/game/advanced?year={year}&seasonType={stype}&excludeGarbageTime=true",
+                                     headers={"Authorization": f"Bearer {key}", "Accept": "application/json",
+                                              "User-Agent": "sports-tracker/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                rows += json.load(resp)
+        except Exception as exc:
+            print(f"  EPA ({stype}): {exc}", file=sys.stderr)
+            if stype == "regular":
+                return None
+
+    def count(block):
+        ppa, total = block.get("ppa"), block.get("totalPPA")
+        if not ppa or total is None:
+            return 0
+        return round(total / ppa)
+
+    out = {}
+    unmatched = 0
+    for r in rows:
+        ids = games_by_id.get(str(r.get("gameId")))
+        if not ids:
+            continue  # not an FBS game we track
+        name = norm_name(r.get("team"))
+        match = [i for i in ids if norm_name(teams[i]["name"]) == name]
+        if not match:
+            # Fall back to the opponent's name to pick the other side
+            opp = norm_name(r.get("opponent"))
+            other = [i for i in ids if norm_name(teams[i]["name"]) == opp]
+            match = [i for i in ids if i not in other] if len(other) == 1 else []
+        if len(match) != 1:
+            unmatched += 1
+            continue
+        o, d = r.get("offense") or {}, r.get("defense") or {}
+        vals = []
+        for side in (o, d):
+            pas, rus = side.get("passingPlays") or {}, side.get("rushingPlays") or {}
+            vals += [side.get("plays") or 0, round(side.get("totalPPA") or 0, 2),
+                     count(pas), round(pas.get("totalPPA") or 0, 2),
+                     count(rus), round(rus.get("totalPPA") or 0, 2)]
+        out[f"{r['gameId']}|{match[0]}"] = vals
+    print(f"EPA for {len(out)} team-games ({unmatched} couldn't be matched to a team)")
+    return out
 
 
 def total_yards(game_id):
@@ -190,6 +265,17 @@ def main():
         poll_info = {"name": poll.get("name"), "week": (poll.get("occurrence") or {}).get("displayValue", "")}
 
     results.sort(key=lambda r: (r[2], r[0], r[3]))
+
+    games_by_id = {}
+    for r in results:
+        games_by_id.setdefault(r[0], []).append(r[3])
+    epa = fetch_epa(first.get("season", {}).get("year"), games_by_id, teams)
+    if epa is None:
+        epa = load(EPA_OUT, {})
+    else:
+        EPA_OUT.write_text(json.dumps(epa, separators=(",", ":"), sort_keys=True))
+    for r in results:
+        r.extend(epa.get(f"{r[0]}|{r[3]}") or [None] * len(EPA_COLS))
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
@@ -202,7 +288,7 @@ def main():
         "conferences": confs,
         "teams": dict(sorted(teams.items())),
         "weeks": out_weeks,
-        "resultCols": ["gameId", "week", "date", "team", "opp", "confGame", "pf", "pa", "yds", "oppYds"],
+        "resultCols": ["gameId", "week", "date", "team", "opp", "confGame", "pf", "pa", "yds", "oppYds"] + EPA_COLS,
         "results": results,
     }, separators=(",", ":")))
     print(f"Saved {OUT}: {len(out_weeks)} weeks, {len(results) // 2} completed games "

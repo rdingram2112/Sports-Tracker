@@ -56,4 +56,6 @@ Then open http://localhost:8000.
 
 Each card compares the two teams' points and total yards per game, scored and allowed, with national ranks among FBS teams. "Stats from" limits those to the whole season or each team's last 3 or 5 games, and optionally conference games only; they count games played before the selected week.
 
+Cards also show EPA (expected points added) per play, per dropback and per rush for offense and defense, from [CollegeFootballData.com](https://collegefootballdata.com) with garbage time excluded. It needs a free API key stored as the repository secret `CFBD_API_KEY` (Settings → Secrets and variables → Actions); without it the last saved EPA (`data/cfb/epa.json`) is kept.
+
 `scripts/fetch_cfb.py` writes `data/cfb/season.json` (every week's games plus a row per team per completed game). Box scores are downloaded once per game (`data/cfb/boxscores.json`), and the last betting line seen before kickoff is kept (`data/cfb/lines.json`) because ESPN removes lines once games start. The daily GitHub Action runs it each morning and mid-afternoon Eastern.
