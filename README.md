@@ -58,6 +58,8 @@ Then open http://localhost:8000.
 
 Each card compares the two teams' points and total yards per game, scored and allowed, with national ranks among FBS teams. "Stats from" limits those to the whole season or each team's last 3 or 5 games, and optionally conference games only; they count games played before the selected week.
 
+From CollegeFootballData.com play-by-play (garbage time excluded) the script also counts, per team-game: success rate overall, on early (1st-2nd) and late (3rd-4th) downs, and on standard and passing downs; sack rate; pressure rate (sacks plus dropbacks the stat crew noted as hurried or hit, so it undercounts and varies by crew); and havoc rate. Each week's plays are downloaded once (`data/cfb/playstats.json`). Team stats has Success and Pressure & havoc column sets, and matchup cards have matching sections (pick which with **Card stats**).
+
 EPA can be shown raw or **opponent-adjusted** (the default): `scripts/fetch_cfb.py` rates every offense and defense at once from per-game EPA (each game weighted by plays, home field included, ratings measured against an average FBS team), then stores each game's EPA adjusted for that opponent, so the page's period filters work on adjusted numbers too.
 
 Cards also show EPA (expected points added) per play, per dropback and per rush for offense and defense, from [CollegeFootballData.com](https://collegefootballdata.com) with garbage time excluded. It needs a free API key stored as the repository secret `CFBD_API_KEY` (Settings → Secrets and variables → Actions); without it the last saved EPA (`data/cfb/epa.json`) is kept.

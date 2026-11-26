@@ -42,6 +42,16 @@ EPA_OUT = DIR / "epa.json"
 RESULT_COLS = ["gameId", "week", "date", "team", "opp", "confGame", "pf", "pa", "yds", "oppYds", "site"]
 # Opponent-adjusted total EPA for each team-game (divide by the matching play count for per-play).
 ADJ_COLS = ["adjOffEpa", "adjOffPassEpa", "adjOffRushEpa", "adjDefEpa", "adjDefPassEpa", "adjDefRushEpa"]
+# Play-by-play counts per team-game (garbage time excluded): offense, then the same for the opponent's
+# offense (what this team's defense allowed). Each rate is (events key) / (plays key).
+PBP_KEYS = ["N", "Succ", "EarlyN", "EarlyS", "LateN", "LateS", "StdN", "StdS", "PdN", "PdS",
+            "Db", "Sacks", "Press", "Havoc"]
+PBP_COLS = ["off" + k for k in PBP_KEYS] + ["def" + k for k in PBP_KEYS]
+# (events, plays, shrink) for each rate that gets an opponent adjustment
+RATE_SPLITS = [("Succ", "N", 150), ("EarlyS", "EarlyN", 120), ("LateS", "LateN", 80), ("StdS", "StdN", 120),
+               ("PdS", "PdN", 80), ("Sacks", "Db", 120), ("Press", "Db", 120), ("Havoc", "N", 150)]
+ADJ_RATE_COLS = ["adjOff" + e for e, _, _ in RATE_SPLITS] + ["adjDef" + e for e, _, _ in RATE_SPLITS]
+PLAYS_CACHE = DIR / "playstats.json"
 EPA_COLS = ["offPlays", "offEpa", "offPassPlays", "offPassEpa", "offRushPlays", "offRushEpa",
             "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa"]
 
@@ -136,18 +146,19 @@ def fit_ratings(games, shrink, rounds=200):
     return avg, off, defn, hfa
 
 
-def adjust_for_opponents(results, fbs):
-    """Add opponent-adjusted EPA to each team-game row (ADJ_COLS), in place.
+def adjust_for_opponents(results, fbs, col, splits):
+    """Opponent-adjusted totals for each team-game, appended to each row in place.
 
-    A game's adjusted offense = its EPA/play minus how much its opponent's defense usually gives up
-    (relative to average) minus home field; adjusted defense works the same way against the opponent's
-    offense. Opponent strength comes from every game so far; the page then picks which games count.
-    Ratings are measured against the average FBS team, so an adjusted number reads as
-    "what this team did, against an average FBS opponent".
+    `splits` is a list of (off events key, off plays key, shrink). For each, every offense and defense
+    is rated at once from per-game rates (see fit_ratings). A game's adjusted offense = its rate minus
+    how much that opponent's defense usually gives up (relative to the average FBS defense) minus home
+    field; adjusted defense works the same way against the opponent's offense. Opponent strength comes
+    from every game so far; the page then picks which games count. Ratings are measured against the
+    average FBS team, so an adjusted number reads as "what this team did against an average FBS opponent".
+    Appends, per split, the adjusted offensive total, then per split the adjusted defensive total
+    (adjusted rate x plays, so the page can add games up and divide by plays).
     """
-    col = {k: i for i, k in enumerate(RESULT_COLS + EPA_COLS)}
-    splits = [("offEpa", "offPlays", 250), ("offPassEpa", "offPassPlays", 120), ("offRushEpa", "offRushPlays", 120)]
-    fits = {}
+    fits = []
     for total_key, plays_key, shrink in splits:
         games = []
         for r in results:
@@ -161,29 +172,145 @@ def adjust_for_opponents(results, fbs):
             fd = [defn[t] for t in defn if t in fbs]
             mo, md = (sum(fo) / len(fo) if fo else 0), (sum(fd) / len(fd) if fd else 0)
             fit = (avg + mo + md, {t: v - mo for t, v in off.items()}, {t: v - md for t, v in defn.items()}, hfa)
-        fits[total_key] = fit
+        fits.append(fit)
     for r in results:
         adj = []
         for side in ("off", "def"):
-            for (total_key, plays_key, _) in splits:
-                fit = fits[total_key]
-                tk = total_key.replace("off", side, 1)
-                pk = plays_key.replace("off", side, 1)
+            for (total_key, plays_key, _), fit in zip(splits, fits):
+                tk = side + total_key[3:]
+                pk = side + plays_key[3:]
                 plays, total = r[col[pk]], r[col[tk]]
                 if not fit or not plays:
                     adj.append(None)
                     continue
                 avg, off, defn, hfa = fit
-                me, opp, site = r[col["team"]], r[col["opp"]], r[col["site"]]
+                opp, site = r[col["opp"]], r[col["site"]]
                 if side == "off":   # my offense vs their defense; I'm at `site`
-                    per_play = total / plays - defn.get(opp, 0) - hfa * site
+                    rate = total / plays - defn.get(opp, 0) - hfa * site
                 else:               # their offense vs my defense; they're at -site
-                    per_play = total / plays - off.get(opp, 0) - hfa * -site
-                adj.append(round(per_play * plays, 2))
+                    rate = total / plays - off.get(opp, 0) - hfa * -site
+                adj.append(round(rate * plays, 2))
         r.extend(adj)
-    a = fits.get("offEpa")
-    if a:
-        print(f"Opponent adjustment: league average {a[0]:+.3f} EPA/play, home field {a[3]:+.3f}")
+    return fits
+
+
+def is_garbage_time(play):
+    """Bill Connelly's definition: a lead of more than 38 in the 2nd quarter, 28 in the 3rd, 22 in the 4th."""
+    try:
+        margin = abs(int(play.get("offenseScore") or 0) - int(play.get("defenseScore") or 0))
+    except (TypeError, ValueError):
+        return False
+    return {2: margin > 38, 3: margin > 28, 4: margin > 22}.get(play.get("period"), False)
+
+
+RUSH_TYPES = {"Rush", "Rushing Touchdown"}
+PASS_TYPES = {"Pass Reception", "Pass Incompletion", "Passing Touchdown", "Sack", "Pass Interception Return",
+              "Interception", "Interception Return Touchdown", "Pass", "Pass Completion"}
+FUMBLE_TYPES = {"Fumble Recovery (Opponent)", "Fumble Recovery (Own)", "Fumble", "Fumble Return Touchdown"}
+TURNOVER_TYPES = {"Pass Interception Return", "Interception", "Interception Return Touchdown",
+                  "Fumble Recovery (Opponent)", "Fumble Return Touchdown"}
+HURRY = re.compile(r"\bhurr|\bqb hit\b|\bpressured\b", re.I)
+
+
+def play_counts(plays):
+    """Counts in PBP_KEYS order for one offense's plays in one game (garbage time excluded).
+
+    Success: at least 50% of the yards to go on 1st down, 70% on 2nd, 100% on 3rd/4th (touchdowns
+    always, turnovers never). Standard downs: 1st, 2nd & 7 or less, 3rd/4th & 4 or less; the rest are
+    passing downs. Dropbacks are passes, sacks and interceptions. Pressure = sacks plus dropbacks the
+    stat crew noted as hurried or hit. Havoc = tackles for loss (incl. sacks), interceptions, fumbles and
+    passes broken up.
+    """
+    c = dict.fromkeys(PBP_KEYS, 0)
+    for p in plays:
+        ptype = p.get("playType")
+        down, dist = p.get("down"), p.get("distance")
+        if ptype not in RUSH_TYPES | PASS_TYPES | FUMBLE_TYPES or down not in (1, 2, 3, 4) or dist is None:
+            continue
+        if is_garbage_time(p):
+            continue
+        text = (p.get("playText") or "").lower()
+        gained = p.get("yardsGained") or 0
+        if ptype in TURNOVER_TYPES:
+            success = False
+        elif "touchdown" in ptype.lower() or (p.get("scoring") and "touchdown" in text):
+            success = True
+        else:
+            need = dist * (0.5 if down == 1 else 0.7 if down == 2 else 1.0)
+            success = gained >= need
+        c["N"] += 1
+        c["Succ"] += success
+        early = down <= 2
+        c["EarlyN" if early else "LateN"] += 1
+        c["EarlyS" if early else "LateS"] += success
+        standard = down == 1 or (down == 2 and dist <= 7) or (down >= 3 and dist <= 4)
+        c["StdN" if standard else "PdN"] += 1
+        c["StdS" if standard else "PdS"] += success
+        dropback = ptype in PASS_TYPES
+        sack = ptype == "Sack"
+        if dropback:
+            c["Db"] += 1
+            c["Sacks"] += sack
+            c["Press"] += sack or bool(HURRY.search(text))
+        havoc = (sack or ptype in TURNOVER_TYPES or ptype in FUMBLE_TYPES or "fumble" in text
+                 or "broken up" in text or (ptype in RUSH_TYPES and gained < 0))
+        c["Havoc"] += havoc
+    return [c[k] for k in PBP_KEYS]
+
+
+def cfbd_get(path, key):
+    req = urllib.request.Request(f"{CFBD}{path}", headers={"Authorization": f"Bearer {key}", "Accept": "application/json",
+                                                            "User-Agent": "sports-tracker/1.0"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        return json.load(resp)
+
+
+def match_team(game_id, name, opponent, games_by_id, teams):
+    """ESPN team id for a CollegeFootballData team name in a given game, or None."""
+    ids = games_by_id.get(str(game_id))
+    if not ids:
+        return None
+    match = [i for i in ids if norm_name(teams[i]["name"]) == norm_name(name)]
+    if not match:
+        other = [i for i in ids if norm_name(teams[i]["name"]) == norm_name(opponent)]
+        match = [i for i in ids if i not in other] if len(other) == 1 else []
+    return match[0] if len(match) == 1 else None
+
+
+def fetch_play_stats(year, weeks, games_by_id, teams):
+    """{"gameId|teamId": offense counts} from CollegeFootballData play-by-play, one request per week.
+
+    Weeks whose completed games are all cached aren't downloaded again.
+    """
+    cache = load(PLAYS_CACHE, {})
+    key = os.environ.get("CFBD_API_KEY")
+    if not key:
+        print("No CFBD_API_KEY set; keeping the saved play-by-play stats.")
+        return cache
+    wanted = {}
+    for w in weeks:
+        done = [g["id"] for g in w["games"] if g["state"] == "post" and g["id"] in games_by_id]
+        if not done or all(f"{gid}|{tid}" in cache for gid in done for tid in games_by_id[gid]):
+            continue
+        stype = "regular" if w["stype"] == 2 else "postseason"
+        wanted[(stype, w["week"] if stype == "regular" else 1)] = True
+    for stype, week in wanted:
+        try:
+            plays = cfbd_get(f"/plays?year={year}&week={week}&seasonType={stype}", key)
+        except Exception as exc:
+            print(f"  plays {stype} week {week}: {exc}", file=sys.stderr)
+            continue
+        groups = {}
+        for p in plays:
+            groups.setdefault((str(p.get("gameId")), p.get("offense"), p.get("defense")), []).append(p)
+        for (gid, offense, defense), ps in groups.items():
+            tid = match_team(gid, offense, defense, games_by_id, teams)
+            if tid:
+                cache[f"{gid}|{tid}"] = play_counts(ps)
+        print(f"Play-by-play {stype} week {week}: {len(plays)} plays")
+        time.sleep(0.5)
+    PLAYS_CACHE.write_text(json.dumps(cache, separators=(",", ":"), sort_keys=True))
+    return cache
 
 
 def norm_name(name):
@@ -224,19 +351,13 @@ def fetch_epa(year, games_by_id, teams):
     out = {}
     unmatched = 0
     for r in rows:
-        ids = games_by_id.get(str(r.get("gameId")))
-        if not ids:
+        if str(r.get("gameId")) not in games_by_id:
             continue  # not an FBS game we track
-        name = norm_name(r.get("team"))
-        match = [i for i in ids if norm_name(teams[i]["name"]) == name]
-        if not match:
-            # Fall back to the opponent's name to pick the other side
-            opp = norm_name(r.get("opponent"))
-            other = [i for i in ids if norm_name(teams[i]["name"]) == opp]
-            match = [i for i in ids if i not in other] if len(other) == 1 else []
-        if len(match) != 1:
+        tid = match_team(r.get("gameId"), r.get("team"), r.get("opponent"), games_by_id, teams)
+        if not tid:
             unmatched += 1
             continue
+        match = [tid]
         o, d = r.get("offense") or {}, r.get("defense") or {}
         vals = []
         for side in (o, d):
@@ -358,7 +479,21 @@ def main():
         EPA_OUT.write_text(json.dumps(epa, separators=(",", ":"), sort_keys=True))
     for r in results:
         r.extend(epa.get(f"{r[0]}|{r[3]}") or [None] * len(EPA_COLS))
-    adjust_for_opponents(results, {t for t, v in teams.items() if v["conf"] in confs})
+    fbs = {t for t, v in teams.items() if v["conf"] in confs}
+    col = {k: i for i, k in enumerate(RESULT_COLS + EPA_COLS)}
+    fits = adjust_for_opponents(results, fbs, col, [("offEpa", "offPlays", 250), ("offPassEpa", "offPassPlays", 120),
+                                                    ("offRushEpa", "offRushPlays", 120)])
+    if fits[0]:
+        print(f"Opponent adjustment: league average {fits[0][0]:+.3f} EPA/play, home field {fits[0][3]:+.3f}")
+
+    # Success, sack, pressure and havoc rates from play-by-play; defense = the opponent's offense that game
+    pbp = fetch_play_stats(first.get("season", {}).get("year"), out_weeks, games_by_id, teams)
+    for r in results:
+        mine, theirs = pbp.get(f"{r[0]}|{r[3]}"), pbp.get(f"{r[0]}|{r[4]}")
+        r.extend((mine or [None] * len(PBP_KEYS)) + (theirs or [None] * len(PBP_KEYS)))
+    col = {k: i for i, k in enumerate(RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS)}
+    adjust_for_opponents(results, fbs, col, [("off" + e, "off" + n, sh) for e, n, sh in RATE_SPLITS])
+    print(f"Play-by-play stats for {sum(1 for r in results if r[col['offN']] is not None)} of {len(results)} team-games")
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
@@ -371,7 +506,7 @@ def main():
         "conferences": confs,
         "teams": dict(sorted(teams.items())),
         "weeks": out_weeks,
-        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS,
+        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS + ADJ_RATE_COLS,
         "results": results,
     }, separators=(",", ":")))
     print(f"Saved {OUT}: {len(out_weeks)} weeks, {len(results) // 2} completed games "
