@@ -588,7 +588,8 @@ tbody tr:hover td { background: var(--head-bg); }
 .qblog .cq-team .logo { width: 16px; height: 16px; }
 .qblog .rec { white-space: nowrap; }
 @media (max-width: 380px) { #cq-log .qblog th, #cq-log .qblog td, #cq-career .qblog th, #cq-career .qblog td { padding-inline: 3px; } }
-@media (max-width: 760px) { #cq-career .rtg { display: none; } #view-cfbqb .qblog thead th { white-space: normal; line-height: 1.15; vertical-align: bottom; } #cq-career .pc2 { display: none; } #cq-log .result .sc { display: block; font-size: 12px; } }
+.gp-in { display: none; }
+@media (max-width: 760px) { #cq-career .rtg, #cq-career .gpc { display: none; } #cq-career .gp-in { display: inline; } #cq-career tr.totals .gp-in { display: block; font-size: 11px; font-weight: 400; color: var(--muted); } #view-cfbqb .qblog thead th { white-space: normal; line-height: 1.15; vertical-align: bottom; } #cq-career .pc2 { display: none; } #cq-log .result .sc { display: block; font-size: 12px; } }
 .qblog .rec small { display: block; font-size: 11px; color: var(--muted, inherit); opacity: 0.8; }
 #view-cfbqb .qblog-wrap, #view-cfbteam .qblog-wrap { background: var(--surface); }
 #view-cfbteam .qblog { min-width: 100%; }
@@ -3173,6 +3174,8 @@ function renderCfbQb() {
   // Career by season (one row per school per season)
   const seasons = (bio.seasons || []).filter(s => s.att || s.car);
   const thisYear = String(d.season);
+  // Games played: ours for this season (box scores above), ESPN's for past seasons
+  const gpOf = s => s.season === thisYear ? (games.filter(g => !s.teamId || g.team === s.teamId).length || s.gp) : s.gp;
   const rows = seasons.map(s => {
     const known = Object.entries(d.teams).find(([tid]) => tid === s.teamId);
     const tname = known ? known[1].name : titleSlug(s.teamSlug);
@@ -3185,13 +3188,13 @@ function renderCfbQb() {
   const pct = (c, a) => a ? (c / a * 100).toFixed(1) + "%" : "—";
   const hasRtg = rows.some(s => s.rtg);
   document.getElementById("cq-career").innerHTML = rows.length ? `<table class="box qblog">
-    <thead><tr><th>Season</th><th>CMP/<wbr>ATT</th><th class="pc2">CMP%</th><th>YDS</th><th>TD-<wbr>INT</th>${hasRtg ? `<th class="rtg">RTG</th>` : ""}<th>EPA/<wbr>DB</th><th>RUSH</th></tr></thead>
+    <thead><tr><th>Season</th><th class="gpc">GP</th><th>CMP/<wbr>ATT</th><th class="pc2">CMP%</th><th>YDS</th><th>TD-<wbr>INT</th>${hasRtg ? `<th class="rtg">RTG</th>` : ""}<th>EPA/<wbr>DB</th><th>RUSH</th></tr></thead>
     <tbody>${rows.map(s => `<tr>
-      <td><div class="qgame"><span class="wk">${esc(s.season)}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td>
+      <td><div class="qgame"><span class="wk">${esc(s.season)}${gpOf(s) ? `<span class="gp-in"> · ${gpOf(s)} GP</span>` : ""}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td><td class="gpc">${gpOf(s) ?? "—"}</td>
       <td>${s.cmp ?? 0}/${s.att ?? 0}</td><td class="pc2">${pct(s.cmp, s.att)}</td><td class="pts">${(s.yds ?? 0).toLocaleString()}</td><td>${s.td ?? 0}-${s.int ?? 0}</td>
       ${hasRtg ? `<td class="rtg">${s.rtg ? s.rtg.toFixed(1) : "—"}</td>` : ""}<td>${s.epa == null ? "—" : signed(s.epa, 2)}</td>
       <td>${rushCell(s.car ?? 0, s.ryds ?? 0, s.rtd ?? 0)}</td></tr>`).join("")}
-    <tr class="totals"><td>Career</td><td>${tot("cmp")}/${tot("att")}</td><td class="pc2">${pct(tot("cmp"), tot("att"))}</td><td>${tot("yds").toLocaleString()}</td><td>${tot("td")}-${tot("int")}</td>
+    <tr class="totals"><td>Career${rows.some(gpOf) ? `<span class="gp-in"> · ${rows.reduce((a, x) => a + (gpOf(x) || 0), 0)} GP</span>` : ""}</td><td class="gpc">${rows.some(gpOf) ? rows.reduce((a, x) => a + (gpOf(x) || 0), 0) : "—"}</td><td>${tot("cmp")}/${tot("att")}</td><td class="pc2">${pct(tot("cmp"), tot("att"))}</td><td>${tot("yds").toLocaleString()}</td><td>${tot("td")}-${tot("int")}</td>
       ${hasRtg ? `<td class="rtg">—</td>` : ""}<td>${careerEpa == null ? "—" : signed(careerEpa, 2)}</td><td>${rushCell(tot("car"), tot("ryds"), tot("rtd"))}</td></tr>
     </tbody></table>` : `<div class="gd-msg">No career stats found.</div>`;
 }
@@ -3437,6 +3440,8 @@ function renderCfbRb() {
     </tbody></table>` : `<div class="gd-msg">No games this season.</div>`;
 
   const thisYear = String(d.season);
+  // Games played: ours for this season (box scores above), ESPN's for past seasons
+  const gpOf = s => s.season === thisYear ? (games.filter(g => !s.teamId || g.team === s.teamId).length || s.gp) : s.gp;
   const rows = (bio.seasons || []).filter(s => s.car || s.rec).map(s => {
     const known = d.teams[s.teamId];
     return { ...s, tname: known ? known.name : titleSlug(s.teamSlug), epa: s.season === thisYear ? epa : s.epa };
@@ -3445,12 +3450,12 @@ function renderCfbRb() {
   const ew = rows.filter(s => s.epa != null);
   const careerEpa = ew.length ? ew.reduce((a, s) => a + s.epa * (s.car || 0), 0) / ew.reduce((a, s) => a + (s.car || 0), 0) : null;
   document.getElementById("cq-career").innerHTML = rows.length ? `<table class="box qblog">
-    <thead><tr><th>Season</th><th>CAR</th><th>YDS</th><th>YPC</th><th>TD</th><th>LONG</th><th>EPA</th><th>REC</th></tr></thead>
+    <thead><tr><th>Season</th><th class="gpc">GP</th><th>CAR</th><th>YDS</th><th>YPC</th><th>TD</th><th>LONG</th><th>EPA</th><th>REC</th></tr></thead>
     <tbody>${rows.map(s => `<tr>
-      <td><div class="qgame"><span class="wk">${esc(s.season)}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td>
+      <td><div class="qgame"><span class="wk">${esc(s.season)}${gpOf(s) ? `<span class="gp-in"> · ${gpOf(s)} GP</span>` : ""}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td><td class="gpc">${gpOf(s) ?? "—"}</td>
       <td>${s.car ?? 0}</td><td class="pts">${(s.ryds ?? 0).toLocaleString()}</td><td>${ypc(s.ryds || 0, s.car)}</td><td>${s.rtd ?? 0}</td><td>${s.rlng ?? "—"}</td>
       <td>${s.epa == null ? "—" : signed(s.epa, 2)}</td><td>${recCell(s.rec ?? 0, s.recYds ?? 0, s.recTd ?? 0)}</td></tr>`).join("")}
-    <tr class="totals"><td>Career</td><td>${tot("car")}</td><td>${tot("ryds").toLocaleString()}</td><td>${ypc(tot("ryds"), tot("car"))}</td><td>${tot("rtd")}</td><td>—</td>
+    <tr class="totals"><td>Career${rows.some(gpOf) ? `<span class="gp-in"> · ${rows.reduce((a, x) => a + (gpOf(x) || 0), 0)} GP</span>` : ""}</td><td class="gpc">${rows.some(gpOf) ? rows.reduce((a, x) => a + (gpOf(x) || 0), 0) : "—"}</td><td>${tot("car")}</td><td>${tot("ryds").toLocaleString()}</td><td>${ypc(tot("ryds"), tot("car"))}</td><td>${tot("rtd")}</td><td>—</td>
       <td>${careerEpa == null ? "—" : signed(careerEpa, 2)}</td><td>${recCell(tot("rec"), tot("recYds"), tot("recTd"))}</td></tr>
     </tbody></table>` : `<div class="gd-msg">Career stats will appear after the next daily update.</div>`;
 }
@@ -3659,6 +3664,8 @@ function renderCfbWr() {
     </tbody></table>` : `<div class="gd-msg">No games this season.</div>`;
 
   const thisYear = String(d.season);
+  // Games played: ours for this season (box scores above), ESPN's for past seasons
+  const gpOf = s => s.season === thisYear ? (games.filter(g => !s.teamId || g.team === s.teamId).length || s.gp) : s.gp;
   const rows = (bio.seasons || []).filter(s => s.rec || s.car).map(s => {
     const known = d.teams[s.teamId];
     return { ...s, tname: known ? known.name : titleSlug(s.teamSlug), epa: s.season === thisYear ? epa : s.epa };
@@ -3667,12 +3674,12 @@ function renderCfbWr() {
   const ew = rows.filter(s => s.epa != null && s.rec);
   const careerEpa = ew.length ? ew.reduce((a, s) => a + s.epa * s.rec, 0) / ew.reduce((a, s) => a + s.rec, 0) : null;
   document.getElementById("cq-career").innerHTML = rows.length ? `<table class="box qblog">
-    <thead><tr><th>Season</th><th>REC</th><th>YDS</th><th>AVG</th><th>TD</th><th>EPA</th><th>RUSH</th></tr></thead>
+    <thead><tr><th>Season</th><th class="gpc">GP</th><th>REC</th><th>YDS</th><th>AVG</th><th>TD</th><th>EPA</th><th>RUSH</th></tr></thead>
     <tbody>${rows.map(s => `<tr>
-      <td><div class="qgame"><span class="wk">${esc(s.season)}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td>
+      <td><div class="qgame"><span class="wk">${esc(s.season)}${gpOf(s) ? `<span class="gp-in"> · ${gpOf(s)} GP</span>` : ""}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td><td class="gpc">${gpOf(s) ?? "—"}</td>
       <td>${s.rec ?? 0}</td><td class="pts">${(s.recYds ?? 0).toLocaleString()}</td><td>${per(s.recYds || 0, s.rec)}</td><td>${s.recTd ?? 0}</td>
       <td>${s.epa == null ? "—" : signed(s.epa, 2)}</td><td>${s.car ? `${s.car}/${String(s.ryds ?? 0).replace("-", "−")}` : "—"}</td></tr>`).join("")}
-    <tr class="totals"><td>Career</td><td>${tot("rec")}</td><td>${tot("recYds").toLocaleString()}</td><td>${per(tot("recYds"), tot("rec"))}</td><td>${tot("recTd")}</td>
+    <tr class="totals"><td>Career${rows.some(gpOf) ? `<span class="gp-in"> · ${rows.reduce((a, x) => a + (gpOf(x) || 0), 0)} GP</span>` : ""}</td><td class="gpc">${rows.some(gpOf) ? rows.reduce((a, x) => a + (gpOf(x) || 0), 0) : "—"}</td><td>${tot("rec")}</td><td>${tot("recYds").toLocaleString()}</td><td>${per(tot("recYds"), tot("rec"))}</td><td>${tot("recTd")}</td>
       <td>${careerEpa == null ? "—" : signed(careerEpa, 2)}</td><td>${tot("car") ? `${tot("car")}/${String(tot("ryds")).replace("-", "−")}` : "—"}</td></tr>
     </tbody></table>` : `<div class="gd-msg">Career stats will appear after the next daily update.</div>`;
 }

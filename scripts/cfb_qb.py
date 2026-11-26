@@ -273,6 +273,47 @@ MIN_ATTEMPTS_FOR_PAGE = 30  # quarterbacks with at least this many attempts this
 FIRST_EPA_SEASON = 2014
 
 
+GAMES_PLAYED_PER_RUN = 1500
+
+
+def fill_games_played(cache, wanted, year, get_json, base, budget=None):
+    """Games played per past season and team, from ESPN's game logs (ESPN's college career stats have no GP).
+
+    Stored as cache["players"][pid]["gp"] = {season: {teamId: games}}. Past seasons never change, so each is
+    fetched once; the current season comes from our own box scores on the page. Returns requests used."""
+    used = 0
+    budget = GAMES_PLAYED_PER_RUN if budget is None else budget
+    for pid in wanted:
+        p = cache["players"].get(pid)
+        if not p:
+            continue
+        gp = p.setdefault("gp", {})
+        for season in sorted({s["season"] for s in p.get("seasons", []) if s["season"].isdigit() and s["season"] < str(year)}):
+            if season in gp:
+                continue
+            if used >= budget:
+                return used
+            try:
+                d = get_json(f"{base}/{pid}/gamelog?season={season}")
+            except Exception as exc:
+                print(f"  games played {pid} {season}: {exc}", file=sys.stderr)
+                continue
+            used += 1
+            counts = {}
+            for e in (d.get("events") or {}).values():
+                tid = str((e.get("team") or {}).get("id") or "")
+                counts[tid] = counts.get(tid, 0) + 1
+            gp[season] = counts
+            time.sleep(0.05)
+    return used
+
+
+def with_gp(p, s):
+    """A career row with its games played, when known."""
+    g = (p.get("gp") or {}).get(s["season"]) or {}
+    return g.get(s.get("teamId")) or (sum(g.values()) if len(g) == 1 or not s.get("teamId") else None)
+
+
 def build_careers(year, key, qbs_path, cache_path, out_path, get_json, cfbd_get, load):
     """Bio and season-by-season career lines for quarterbacks with real playing time this season.
 
@@ -344,6 +385,7 @@ def build_careers(year, key, qbs_path, cache_path, out_path, get_json, cfbd_get,
             except Exception as exc:
                 print(f"  EPA {season}: {exc}", file=sys.stderr)
             time.sleep(0.3)
+    fill_games_played(cache, wanted, year, get_json, ESPN_ATHLETE)
     cache_path.write_text(json.dumps(cache, separators=(",", ":"), sort_keys=True))
 
     out = {}
@@ -355,6 +397,7 @@ def build_careers(year, key, qbs_path, cache_path, out_path, get_json, cfbd_get,
         for s in p["seasons"]:
             row = dict(s)
             row["epa"] = cache["epaSeasons"].get(s["season"], {}).get(pid)
+            row["gp"] = with_gp(p, s)
             seasons.append(row)
         out[pid] = {k: p[k] for k in ("name", "height", "weight", "birthPlace", "jersey", "position")}
         out[pid]["seasons"] = seasons

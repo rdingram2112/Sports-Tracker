@@ -23,7 +23,7 @@ import sys
 import time
 from datetime import date
 
-from cfb_qb import name_key, plain
+from cfb_qb import name_key, plain, fill_games_played, with_gp
 
 RUSH_TYPES = {"Rush", "Rushing Touchdown"}
 TARGET_TYPES = {"Pass Reception", "Pass Incompletion", "Passing Touchdown", "Pass Interception Return",
@@ -344,6 +344,7 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
             except Exception as exc:
                 print(f"  RB EPA {season}: {exc}", file=sys.stderr)
             time.sleep(0.3)
+    fill_games_played(cache, wanted, year, get_json, ESPN_ATHLETE)
     cache_path.write_text(json.dumps(cache, separators=(",", ":"), sort_keys=True))
     out = {}
     for pid in wanted:
@@ -351,6 +352,6 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
         if not p:
             continue
         out[pid] = {k: p[k] for k in ("name", "height", "weight", "birthPlace", "jersey", "position")}
-        out[pid]["seasons"] = [dict(s, epa=cache["epaSeasons"].get(s["season"], {}).get(pid)) for s in p["seasons"]]
+        out[pid]["seasons"] = [dict(s, epa=cache["epaSeasons"].get(s["season"], {}).get(pid), gp=with_gp(p, s)) for s in p["seasons"]]
     out_path.write_text(json.dumps(out, separators=(",", ":"), sort_keys=True))
     print(f"Saved careers for {len(out)} {cfg['label']} ({min(len(due), 400)} fetched this run)")

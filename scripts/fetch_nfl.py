@@ -414,6 +414,7 @@ def build_careers(kind, past, extra_bio, year):
                         return int(float(str(vals.get(k, "0")).replace(",", "")))
                     except ValueError:
                         return 0
+                s["gp"] = max(s.get("gp", 0), n("GP"))
                 if cat["name"] == "passing":
                     s.update(cmp=n("CMP"), att=n("ATT"), yds=n("YDS"), td=n("TD"), int=n("INT"), sacks=n("SACK"))
                 elif cat["name"] == "rushing":
