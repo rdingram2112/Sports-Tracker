@@ -26,7 +26,7 @@ COMPLETE_TYPES = {"Pass Reception", "Passing Touchdown", "Pass Completion"}
 SMOOTH = 20  # attempts of weight given to the broader rate when a combination is sparse
 
 QB_COLS = ["gameId", "week", "player", "team", "opp", "confGame", "comp", "att", "yds", "td", "int",
-           "db", "epa", "cpAtt", "cpComp", "cpExp"]
+           "db", "epa", "cpAtt", "cpComp", "cpExp", "car", "ryds", "rtd"]
 
 
 def plain(s):
@@ -131,10 +131,40 @@ def week_qb_box(rows, match_team, games_by_id, teams):
     return out
 
 
+def week_rush_box(rows, match_team, games_by_id, teams):
+    """{"gameId|athleteId": [carries, yards, TD]} from CollegeFootballData /games/players rushing box scores."""
+    out = {}
+    for game in rows:
+        gid = str(game.get("id"))
+        if gid not in games_by_id:
+            continue
+        sides = game.get("teams") or []
+        for i, t in enumerate(sides):
+            opp_name = sides[1 - i].get("team") if len(sides) == 2 else None
+            tid = match_team(gid, t.get("team"), opp_name, games_by_id, teams)
+            if not tid:
+                continue
+            per = {}
+            for cat in t.get("categories", []):
+                if cat.get("name") != "rushing":
+                    continue
+                for ty in cat.get("types", []):
+                    for a in ty.get("athletes", []):
+                        per.setdefault(str(a["id"]), {})[ty["name"]] = a.get("stat")
+            for aid, st in per.items():
+                if aid.startswith("-"):
+                    continue
+                num = lambda k: int(float(str(st.get(k) or 0).replace(",", "") or 0))
+                out[f"{gid}|{aid}"] = [num("CAR"), num("YDS"), num("TD")]
+    return out
+
+
 def build(year, weeks, games_by_id, teams, results_meta, key, cache_path, out_path,
           cfbd_get, is_garbage_time, match_team, load):
     """Update the cache for weeks with newly completed games, then write data/cfb/qbs.json."""
     cache = load(cache_path, {"box": {}, "plays": {}})
+    cache.setdefault("rush", {})
+    cache.setdefault("rushGames", [])  # games whose rushing box score has been downloaded
     if key:
         for w in weeks:
             done = [g["id"] for g in w["games"] if g["state"] == "post" and g["id"] in games_by_id]
@@ -142,7 +172,9 @@ def build(year, weeks, games_by_id, teams, results_meta, key, cache_path, out_pa
                 continue
             need_box = any(not any(k.startswith(gid + "|") for k in cache["box"]) for gid in done)
             need_plays = any(not any(k.startswith(gid + "|") for k in cache["plays"]) for gid in done)
-            if not need_box and not need_plays:
+            rush_done = set(cache["rushGames"])
+            need_rush = any(gid not in rush_done for gid in done)
+            if not need_box and not need_plays and not need_rush:
                 continue
             stype = "regular" if w["stype"] == 2 else "postseason"
             wk = w["week"] if stype == "regular" else 1
@@ -150,6 +182,10 @@ def build(year, weeks, games_by_id, teams, results_meta, key, cache_path, out_pa
                 if need_box:
                     cache["box"].update(week_qb_box(cfbd_get(f"/games/players?year={year}&week={wk}&seasonType={stype}&category=passing", key),
                                                     match_team, games_by_id, teams))
+                if need_rush:
+                    cache["rush"].update(week_rush_box(cfbd_get(f"/games/players?year={year}&week={wk}&seasonType={stype}&category=rushing", key),
+                                                       match_team, games_by_id, teams))
+                    cache["rushGames"] = sorted(set(cache["rushGames"]) | set(done))
                 if need_plays:
                     cache["plays"].update(week_qb_plays(cfbd_get(f"/plays?year={year}&week={wk}&seasonType={stype}", key),
                                                         is_garbage_time, match_team, games_by_id, teams))
@@ -216,7 +252,7 @@ def build(year, weeks, games_by_id, teams, results_meta, key, cache_path, out_pa
         cp_comp = sum(c for _, c in mine["buckets"].values()) if mine else 0
         cp_exp = sum(a * rate(b) for b, (a, _) in mine["buckets"].items()) if mine else 0.0
         rows.append([gid, week, aid, box["team"], opp, conf, box["comp"], box["att"], box["yds"], box["td"], box["int"],
-                     db, round(epa, 3), cp_att, cp_comp, round(cp_exp, 2)])
+                     db, round(epa, 3), cp_att, cp_comp, round(cp_exp, 2)] + (cache["rush"].get(k) or [0, 0, 0]))
         players[aid] = {"name": box["name"], "team": box["team"]}
     rows.sort(key=lambda r: (r[1], r[0], r[2]))
     matched = sum(1 for r in rows if r[11])

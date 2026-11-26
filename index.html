@@ -572,13 +572,23 @@ tbody tr:hover td { background: var(--head-bg); }
 .cfbt .tteam .tn b .rk { color: var(--accent); font-size: 12px; margin-right: 3px; }
 .cfbt .tteam .tn span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .cfbp .tteam .shot { width: 34px; height: 34px; flex: none; }
+.cfbp .pbtn { width: 100%; }
+#cfbp-box .qbpanel { width: 100%; position: static; contain: inline-size; padding-inline: 12px; }
+#cfbp-box .qbpanel > * { min-width: 0; max-width: 100%; }
+#cfbp-box .qbpanel .pp-note { white-space: normal; }
+.qblog-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.qblog td, .qblog th { font-size: 13px; }
+.qblog tr.out td { color: var(--muted); }
+.qblog tr.out td .result { opacity: 0.7; }
+.qblog .qgame { display: grid; line-height: 1.2; }
+.qblog .qgame .wk { font-size: 11px; color: var(--muted); }
 .cfbp .tteam .tn span { display: flex; align-items: center; gap: 4px; }
 .cfbp .tteam .tn span .logo { width: 14px; height: 14px; }
 @media (max-width: 760px) {
   .cfbp .tteam .shot { width: 26px; height: 26px; }
   .cfbp .tteam .tn { max-width: 74px; }
   .cfbp .tteam .tn b { white-space: normal; font-size: 13px; }
-  #cfbp-box tr > :nth-child(2) { display: none; }
+  #cfbp-box > table > * > tr > :nth-child(2) { display: none; }
   #cfbp-box .pc { display: none; }
   #cfbp-box td { font-size: 13px; }
   #cfbp-box th, #cfbp-box td { padding-inline: 3px; }
@@ -1714,10 +1724,15 @@ function drawBars(box, games, avg, recentAvg, stat, name) {
   const H = 200;
   const m = { top: 14, right: 8, bottom: 26, left: 32 };
   const pw = W - m.left - m.right, ph = H - m.top - m.bottom;
-  const maxV = Math.max(1, avg, recentAvg || 0, ...games.map(g => g.v ?? 0));
-  const step = niceStep(maxV / 4);
-  const top = Math.ceil(maxV / step) * step;
-  const y = v => m.top + ph - (v / top) * ph;
+  // Values can be negative (EPA, CPOE): bars then hang below a zero line.
+  const vals = games.map(g => g.v ?? 0);
+  const maxV = Math.max(stat.minTop ?? 1, avg, recentAvg ?? 0, ...vals);
+  const minV = Math.min(0, avg, recentAvg ?? 0, ...vals);
+  const step = niceStep((maxV - minV) / 4);
+  const top = Math.ceil(maxV / step - 1e-9) * step;
+  const bottom = Math.floor(minV / step + 1e-9) * step;
+  const y = v => m.top + ph - ((v - bottom) / (top - bottom)) * ph;
+  const zero = y(0);
   const band = pw / Math.max(1, games.length);
   const gap = Math.min(6, Math.max(2, band * 0.25));
   const bw = Math.max(2, band - gap);
@@ -1725,23 +1740,29 @@ function drawBars(box, games, avg, recentAvg, stat, name) {
 
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${name}: ${stat.label} by game this season">`;
   // Grid and y-axis labels
-  for (let v = 0; v <= top + 1e-9; v += step) {
+  const tickDigits = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  for (let v = bottom; v <= top + 1e-9; v += step) {
     svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
-    svg += `<text class="tick" x="${m.left - 6}" y="${y(v) + 4}" text-anchor="end">${+v.toFixed(1)}</text>`;
+    svg += `<text class="tick" x="${m.left - 6}" y="${y(v) + 4}" text-anchor="end">${+v.toFixed(tickDigits)}</text>`;
   }
-  // Bars: rounded top, flat on the baseline
+  // Bars: rounded at the far end, flat on the zero line
   games.forEach((g, i) => {
     const x = m.left + i * band + gap / 2;
-    const h = ((g.v ?? 0) / top) * ph;
+    const v = g.v ?? 0;
+    const h = Math.abs(y(v) - zero);
     const fill = g.inPeriod ? "var(--accent)" : "var(--bar-faded)";
-    if (h > 0) {
-      const rr = Math.min(r, h);
-      const y0 = m.top + ph, y1 = y0 - h;
-      svg += `<path d="M${x},${y0} V${y1 + rr} Q${x},${y1} ${x + rr},${y1} H${x + bw - rr} Q${x + bw},${y1} ${x + bw},${y1 + rr} V${y0} Z" fill="${fill}"/>`;
+    if (h <= 0) return;
+    const rr = Math.min(r, h);
+    if (v > 0) {
+      const y1 = zero - h;
+      svg += `<path d="M${x},${zero} V${y1 + rr} Q${x},${y1} ${x + rr},${y1} H${x + bw - rr} Q${x + bw},${y1} ${x + bw},${y1 + rr} V${zero} Z" fill="${fill}"/>`;
+    } else {
+      const y1 = zero + h;
+      svg += `<path d="M${x},${zero} V${y1 - rr} Q${x},${y1} ${x + rr},${y1} H${x + bw - rr} Q${x + bw},${y1} ${x + bw},${y1 - rr} V${zero} Z" fill="${fill}"/>`;
     }
   });
-  // Baseline
-  svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${m.top + ph}" y2="${m.top + ph}" stroke="var(--muted)" stroke-width="1"/>`;
+  // Zero line
+  svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${zero}" y2="${zero}" stroke="var(--muted)" stroke-width="1"/>`;
   // Season average (dashed, full width) and period average (solid, over the period's games)
   svg += `<line x1="${m.left}" x2="${W - m.right}" y1="${y(avg)}" y2="${y(avg)}" stroke="var(--fg)" stroke-width="2" stroke-dasharray="6 4"/>`;
   if (recentAvg != null) {
@@ -1774,10 +1795,11 @@ function drawBars(box, games, avg, recentAvg, stat, name) {
     const scale = svgEl.getBoundingClientRect().width / W;
     const cx = (Number(hit.getAttribute("x")) + band / 2) * scale;
     const cy = y(g.v ?? 0) * scale;
-    const value = stat.calc
-      ? (g.v == null ? `No attempts (${stat.shots(g)})` : `<b>${g.v.toFixed(1)}%</b> ${stat.label.replace("%", "")} (${stat.shots(g)})`)
-      : `<b>${g.v}</b> ${stat.label}`;
-    tip.innerHTML = `${value} · ${shortDay(g.day)} ${g.home ? "vs" : "@"} ${g.opp}`;
+    const value = stat.tip ? stat.tip(g)
+      : stat.calc
+        ? (g.v == null ? `No attempts (${stat.shots(g)})` : `<b>${g.v.toFixed(1)}%</b> ${stat.label.replace("%", "")} (${stat.shots(g)})`)
+        : `<b>${g.v}</b> ${stat.label}`;
+    tip.innerHTML = `${value} · ${shortDay(g.day)} ${g.home ? "vs" : "@"} ${esc(g.opp)}`;
     tip.style.left = Math.min(Math.max(cx, 70), box.clientWidth - 70) + "px";
     tip.style.top = cy + "px";
     tip.hidden = false;
@@ -2403,7 +2425,7 @@ function loadCfb() {
       // EPA, success, sack, pressure and havoc columns, by name (offX/defX/adjOffX/adjDefX)
       const extra = d.resultCols.filter(k => /^(off|def|adjOff|adjDef)[A-Z]/.test(k));
       d.rows = d.results.map(r => {
-        const row = { week: r[c.week], team: r[c.team], conf: r[c.confGame] === 1, pf: r[c.pf], pa: r[c.pa], yds: r[c.yds], oyds: r[c.oppYds] };
+        const row = { gameId: r[c.gameId], week: r[c.week], team: r[c.team], opp: r[c.opp], site: r[c.site], conf: r[c.confGame] === 1, pf: r[c.pf], pa: r[c.pa], yds: r[c.yds], oyds: r[c.oppYds] };
         for (const k of extra) row[k] = r[c[k]];
         return row;
       });
@@ -2749,7 +2771,7 @@ document.getElementById("cfbt-head").addEventListener("click", e => {
 document.getElementById("cfbt-conf").addEventListener("change", e => { cfbt.conf = e.target.value; render(); });
 
 /* College football players: quarterbacks */
-const cfbq = { data: null, loading: false, error: false, sort: "epa", dir: "best", conf: "all" };
+const cfbq = { data: null, loading: false, error: false, sort: "epa", dir: "best", conf: "all", open: null, stat: "yds" };
 const QB_STATS = [
   { key: "ypg", label: "YDS/G", hint: "passing", higher: true, fmt: v => v.toFixed(1) },
   { key: "td", label: "TD", hint: "passing", higher: true, fmt: v => String(v) },
@@ -2791,10 +2813,10 @@ function renderCfbPlayers() {
     if (cfb.confOnly && !r.conf) continue;
     (teamGames[r.team] ||= []).push(r);
   }
-  const window = {};
+  const teamWindow = {};
   for (const [tid, list] of Object.entries(teamGames)) {
     const games = cfb.span ? list.slice(-cfb.span) : list;
-    window[tid] = { weeks: new Set(games.map(g => g.week)), count: games.length };
+    teamWindow[tid] = { weeks: new Set(games.map(g => g.week)), count: games.length };
   }
   const scope = [cfb.span ? `each team's last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
   document.getElementById("cfb-statnote").textContent = `Stats use ${scope}. EPA per dropback includes sacks; scrambles aren't counted. CPOE compares completions with what an average passer completes on the same throws. These aren't opponent-adjusted.`;
@@ -2802,7 +2824,7 @@ function renderCfbPlayers() {
   // Sum each quarterback's games inside his team's window
   const agg = {};
   for (const g of q.list) {
-    const w = window[g.team];
+    const w = teamWindow[g.team];
     if (!w || !w.weeks.has(g.week)) continue;
     if (cfb.confOnly && !g.confGame) continue;
     const a = (agg[g.player] ||= { team: g.team, gp: 0, comp: 0, att: 0, yds: 0, td: 0, int: 0, db: 0, epa: 0, cpAtt: 0, cpComp: 0, cpExp: 0 });
@@ -2811,7 +2833,7 @@ function renderCfbPlayers() {
     a.team = g.team; // most recent team
   }
   const qbs = Object.entries(agg)
-    .filter(([pid, a]) => d.conferences[d.teams[a.team]?.conf] && a.att >= 15 * (window[a.team]?.count || 0) && a.att > 0)
+    .filter(([pid, a]) => d.conferences[d.teams[a.team]?.conf] && a.att >= 15 * (teamWindow[a.team]?.count || 0) && a.att > 0)
     .map(([pid, a]) => ({
       id: pid, ...a,
       ypg: a.yds / a.gp,
@@ -2847,9 +2869,68 @@ function renderCfbPlayers() {
       const cls = rr == null ? "" : rr <= band ? "rk-good" : rr > n - band ? "rk-bad" : "";
       return `<td class="${cfbq.sort === st.key ? "on" : ""}"><span class="pv">${v == null ? "—" : st.fmt(v)}</span><span class="pp ${cls}">${rr ? ordinal(rr) : "&nbsp;"}</span></td>`;
     }).join("");
-    return `<tr><td><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${(x.comp / x.att * 100).toFixed(1)}%</span></div></div></td>
+    const open = cfbq.open === x.id;
+    const row = `<tr class="qrow prow${open ? " open" : ""}" data-pid="${esc(x.id)}"><td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${esc(p.name)}: show game log"><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${(x.comp / x.att * 100).toFixed(1)}%</span></div></div></button></td>
       <td class="dim">${x.gp}</td>${cells}</tr>`;
+    return open ? row + `<tr class="pchart-row"><td colspan="7"><div class="pchart qbpanel" id="qbpanel"></div></td></tr>` : row;
   }).join("") || `<tr><td colspan="7" class="ploading">No qualified quarterbacks.</td></tr>`;
+  if (cfbq.open && document.getElementById("qbpanel")) renderQbPanel(cfbq.open, teamWindow);
+}
+
+/* Quarterback game log: chart of any stat by game, plus the full log */
+const QB_LOG = [
+  { key: "att", label: "ATT" }, { key: "comp", label: "CMP" }, { key: "yds", label: "YDS" },
+  { key: "td", label: "TD" }, { key: "int", label: "INT", lowerBetter: true },
+  { key: "epa", label: "EPA/DB", ratio: true, minTop: 0.5, value: g => g.db ? g.epa / g.db : null,
+    agg: gs => { const db = gs.reduce((a, g) => a + g.db, 0); return db ? gs.reduce((a, g) => a + g.epa, 0) / db : null; },
+    fmt: v => { const r = Math.round(v * 100) / 100; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2); },
+    tip: g => g.v == null ? "No dropbacks" : `<b>${(g.v > 0 ? "+" : "") + g.v.toFixed(2)}</b> EPA/dropback (${g.db} dropbacks)` },
+  { key: "cpoe", label: "CPOE", ratio: true, minTop: 5, value: g => g.cpAtt ? (g.cpComp - g.cpExp) / g.cpAtt * 100 : null,
+    agg: gs => { const a = gs.reduce((s, g) => s + g.cpAtt, 0); return a ? gs.reduce((s, g) => s + g.cpComp - g.cpExp, 0) / a * 100 : null; },
+    fmt: v => { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(1) + "%"; },
+    tip: g => g.v == null ? "No charted throws" : `<b>${(g.v > 0 ? "+" : "") + g.v.toFixed(1)}%</b> CPOE (${g.cpComp}/${g.cpAtt})` },
+  { key: "car", label: "RUSH" }, { key: "ryds", label: "RUSH YDS" }, { key: "rtd", label: "RUSH TD" },
+];
+
+function renderQbPanel(pid, teamWindow) {
+  const panel = document.getElementById("qbpanel");
+  const d = cfb.data, q = cfbq.data;
+  const name = q.players[pid]?.name || "";
+  const start = {};
+  for (const w of d.weeks) for (const g of w.games) start[g.id] = g.start;
+  const meta = {};
+  for (const r of d.rows) meta[r.gameId + "|" + r.team] = r;
+  const games = q.list.filter(g => g.player === pid).map(g => {
+    const m = meta[g.gameId + "|" + g.team] || {};
+    const w = teamWindow[g.team];
+    return { ...g, m, day: start[g.gameId] ? etDay(start[g.gameId]) : null,
+      opp: d.teams[m.opp]?.abbr || d.teams[m.opp]?.name || "", home: m.site !== -1,
+      inPeriod: !!(w && w.weeks.has(g.week) && (!cfb.confOnly || g.confGame)) };
+  });
+  const stat = QB_LOG.find(s => s.key === cfbq.stat) || QB_LOG[2];
+  const val = g => stat.value ? stat.value(g) : g[stat.key];
+  const avgOf = gs => !gs.length ? null : stat.agg ? stat.agg(gs) : gs.reduce((a, g) => a + g[stat.key], 0) / gs.length;
+  const recent = games.filter(g => g.inPeriod);
+  const avg = avgOf(games), recentAvg = recent.length < games.length ? avgOf(recent) : null;
+  const show = v => v == null ? "—" : stat.fmt ? stat.fmt(v) : v.toFixed(1);
+  const diff = recentAvg != null && avg != null ? recentAvg - avg : null;
+  const better = diff == null ? 0 : stat.lowerBetter ? -diff : diff;
+
+  panel.innerHTML = `
+    <div class="qblog-wrap"><table class="box qblog">
+      <thead><tr><th>Game</th><th>Result</th><th>CMP/ATT</th><th>YDS</th><th>TD</th><th>INT</th><th>EPA/DB</th><th>CPOE</th><th>RUSH</th><th>R YDS</th><th>R TD</th></tr></thead>
+      <tbody>${[...games].reverse().map(g => {
+        const won = g.m.pf > g.m.pa;
+        const epa = QB_LOG[5].value(g), cpoe = QB_LOG[6].value(g);
+        return `<tr class="${g.inPeriod ? "" : "out"}">
+          <td><div class="qgame"><span class="wk">${g.day ? shortDay(g.day) : "Wk " + (g.week + 1)}</span><span>${g.home ? "vs" : "@"} ${esc(g.opp)}</span></div></td>
+          <td><span class="result ${won ? "w" : "l"}">${won ? "W" : "L"} ${g.m.pf ?? ""}–${g.m.pa ?? ""}</span></td>
+          <td>${g.comp}/${g.att}</td><td class="pts">${g.yds}</td><td>${g.td}</td><td>${g.int}</td>
+          <td>${epa == null ? "—" : QB_LOG[5].fmt(epa)}</td><td>${cpoe == null ? "—" : QB_LOG[6].fmt(cpoe)}</td>
+          <td>${g.car}</td><td>${g.ryds}</td><td>${g.rtd}</td></tr>`;
+      }).join("")}</tbody>
+    </table></div>
+    <p class="pp-note">Rushing follows college scoring, so sacks count as rushes for lost yards. Faded games are outside the selected "Stats from" games.</p>`;
 }
 
 document.getElementById("cfbp-head").addEventListener("click", e => {
@@ -2860,6 +2941,15 @@ document.getElementById("cfbp-head").addEventListener("click", e => {
   render();
 });
 document.getElementById("cfbp-conf").addEventListener("change", e => { cfbq.conf = e.target.value; render(); });
+document.getElementById("cfbp-rows").addEventListener("click", e => {
+  const tab = e.target.closest("button[data-qstat]");
+  if (tab) { cfbq.stat = tab.dataset.qstat; render(); return; }
+  if (e.target.closest(".qbpanel")) return;
+  const row = e.target.closest("tr.qrow");
+  if (!row) return;
+  cfbq.open = cfbq.open === row.dataset.pid ? null : row.dataset.pid;
+  render();
+});
 document.getElementById("cfbp-rows").addEventListener("error", e => {
   if (e.target.tagName !== "IMG" || !e.target.closest(".shot")) return;
   e.target.parentNode.classList.add("noimg");
