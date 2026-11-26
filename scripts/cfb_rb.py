@@ -272,14 +272,23 @@ MIN_TOUCHES_FOR_PAGE = 25
 FIRST_EPA_SEASON = 2014
 
 
-def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get, load):
-    """Bio and season-by-season rushing/receiving for backs with real playing time; refreshed weekly."""
+CAREER_KINDS = {
+    # touches counted toward a page, CFBD positions and PPA field for past seasons' EPA, label
+    "rb": {"touch": ("car", "rec"), "min": MIN_TOUCHES_FOR_PAGE, "positions": ("RB",), "ppa": "rush", "label": "running backs"},
+    "wr": {"touch": ("tgt",), "min": 20, "positions": ("WR", "TE"), "ppa": "pass", "label": "receivers"},
+}
+
+
+def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get, load, kind="rb"):
+    """Bio and season-by-season rushing/receiving for players with real playing time; refreshed weekly.
+    Past seasons' EPA is CollegeFootballData's per rush (backs) or per target (receivers)."""
+    cfg = CAREER_KINDS[kind]
     q = json.loads(rbs_path.read_text())
     c = {k: i for i, k in enumerate(q["cols"])}
     touches = {}
     for r in q["rows"]:
-        touches[r[c["player"]]] = touches.get(r[c["player"]], 0) + r[c["car"]] + r[c["rec"]]
-    wanted = [pid for pid, t in touches.items() if t >= MIN_TOUCHES_FOR_PAGE]
+        touches[r[c["player"]]] = touches.get(r[c["player"]], 0) + sum(r[c[k]] for k in cfg["touch"])
+    wanted = [pid for pid, t in touches.items() if t >= cfg["min"]]
     cache = load(cache_path, {"players": {}, "epaSeasons": {}})
     today = date.today()
     due = [pid for pid in wanted if pid not in cache["players"]
@@ -326,9 +335,12 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
             if season in cache["epaSeasons"]:
                 continue
             try:
-                rows = cfbd_get(f"/ppa/players/season?year={season}&position=RB&excludeGarbageTime=true", key)
-                cache["epaSeasons"][season] = {str(r["id"]): round((r.get("averagePPA") or {}).get("rush") or 0, 3)
-                                               for r in rows if (r.get("averagePPA") or {}).get("rush") is not None}
+                got = {}
+                for pos in cfg["positions"]:
+                    rows = cfbd_get(f"/ppa/players/season?year={season}&position={pos}&excludeGarbageTime=true", key)
+                    got.update({str(r["id"]): round((r.get("averagePPA") or {}).get(cfg["ppa"]) or 0, 3)
+                                                        for r in rows if (r.get("averagePPA") or {}).get(cfg["ppa"]) is not None})
+                cache["epaSeasons"][season] = got
             except Exception as exc:
                 print(f"  RB EPA {season}: {exc}", file=sys.stderr)
             time.sleep(0.3)
@@ -341,4 +353,4 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
         out[pid] = {k: p[k] for k in ("name", "height", "weight", "birthPlace", "jersey", "position")}
         out[pid]["seasons"] = [dict(s, epa=cache["epaSeasons"].get(s["season"], {}).get(pid)) for s in p["seasons"]]
     out_path.write_text(json.dumps(out, separators=(",", ":"), sort_keys=True))
-    print(f"Saved careers for {len(out)} running backs ({min(len(due), 400)} fetched this run)")
+    print(f"Saved careers for {len(out)} {cfg['label']} ({min(len(due), 400)} fetched this run)")

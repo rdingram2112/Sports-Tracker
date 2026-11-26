@@ -523,6 +523,19 @@ def main():
         import traceback
         traceback.print_exc()
         print(f"  running back stats failed: {exc}", file=sys.stderr)
+
+    # Wide receivers and tight ends (after the backs: they share the backs' roster and box scores)
+    import cfb_wr
+    try:
+        cfb_wr.build(first.get("season", {}).get("year"), out_weeks, games_by_id, teams, results_meta,
+                     os.environ.get("CFBD_API_KEY"), DIR / "rbgames.json", DIR / "wrgames.json", DIR / "wrs.json",
+                     cfbd_get, is_garbage_time, match_team, load)
+        cfb_rb.build_careers(first.get("season", {}).get("year"), os.environ.get("CFBD_API_KEY"), DIR / "wrs.json",
+                             DIR / "wrcareercache.json", DIR / "wrcareers.json", get_json, cfbd_get, load, kind="wr")
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        print(f"  receiver stats failed: {exc}", file=sys.stderr)
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))

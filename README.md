@@ -71,6 +71,14 @@ From CollegeFootballData.com play-by-play (garbage time excluded) the script als
 
 Tap a back for his page (`#cfbrb-<id>`): bio, this season's box scores (rushing, EPA, success, catches/yards) and career stats by season with EPA per rush. Built by `scripts/cfb_rb.py` from CollegeFootballData box scores, rosters and play-by-play (garbage time excluded for the efficiency stats); writes `data/cfb/rbs.json`, caching each week in `data/cfb/rbgames.json`, with careers in `data/cfb/rbcareers.json` (refreshed weekly).
 
+**Wide receivers and tight ends** (Players → Position → WR or TE, ranked separately): receivers with at least 3 targets per team game (tight ends 2), with three column sets:
+
+- **Receiving**: targets, catches, YDS/G, TD, 20+ yard catches
+- **Role**: target share, air-yard share, aDOT (average depth of target), red-zone targets
+- **Efficiency**: catch rate, yards per target, yards after catch per catch, EPA per target, success rate per target
+
+College play-by-play has no air-yards field, so `scripts/cfb_wr.py` reads where each pass was caught or thrown from the play text ("caught at WSU45", "thrown to OhioSt30"), working out which team each abbreviation belongs to from the spots where plays ended. About 98% of targets get air yards. Tap a receiver for his page (`#cfbwr-<id>`): bio, this season's box scores (targets, catches, yards, TD, aDOT, YAC, EPA) and career stats with EPA per target. Writes `data/cfb/wrs.json` (weeks cached in `data/cfb/wrgames.json`) and `data/cfb/wrcareers.json`.
+
 EPA can be shown raw or **opponent-adjusted** (the default): `scripts/fetch_cfb.py` rates every offense and defense at once from per-game EPA (each game weighted by plays, home field included, ratings measured against an average FBS team), then stores each game's EPA adjusted for that opponent, so the page's period filters work on adjusted numbers too.
 
 Cards also show EPA (expected points added) per play, per dropback and per rush for offense and defense, from [CollegeFootballData.com](https://collegefootballdata.com) with garbage time excluded. It needs a free API key stored as the repository secret `CFBD_API_KEY` (Settings → Secrets and variables → Actions); without it the last saved EPA (`data/cfb/epa.json`) is kept.
