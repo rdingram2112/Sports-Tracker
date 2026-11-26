@@ -2620,7 +2620,10 @@ function loadCfb() {
 
 // ESPN's schedule leaves some FCS logos blank; its standard logo address still works for them.
 const cfbLogo = t => {
-  const src = t?.logo || (t?.id ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${encodeURIComponent(t.id)}.png` : "");
+  // Team ids mean different teams in each league (ESPN's NFL id 8 is the Lions, college id 8 is Arkansas),
+  // so look the team up in the league that's showing; only college falls back to ESPN's logo-by-id address.
+  const src = t?.logo || (t?.id && cfb.data?.teams[t.id]?.logo)
+    || (t?.id && FB === "cfb" ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${encodeURIComponent(t.id)}.png` : "");
   return src
     ? `<span class="logo"><img class="logo-light" src="${esc(src)}" alt="" width="34" height="34" loading="lazy"><img class="logo-dark" src="${esc(src.replace("/500/", "/500-dark/"))}" alt="" width="34" height="34" loading="lazy"></span>`
     : `<span class="logo"></span>`;
