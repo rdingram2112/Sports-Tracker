@@ -1243,6 +1243,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
             <option value="succD">Success rate defense</option>
             <option value="pressO">Pressure &amp; havoc offense (allowed)</option>
             <option value="pressD">Pressure &amp; havoc defense</option>
+            <option value="sit">3rd down &amp; red zone</option>
           </select>
         </label>
         <label class="cfb-filter" for="cfbt-conf">
@@ -2644,6 +2645,13 @@ const CFB_STATS = [
   { key: "dPass", label: "DEF / DB", higher: false, epa: true, plays: "defPassPlays", total: "defPassEpa", adjTotal: "adjDefPassEpa" },
   { key: "dRush", label: "DEF / RUSH", higher: false, epa: true, plays: "defRushPlays", total: "defRushEpa", adjTotal: "adjDefRushEpa" },
 ];
+// 3rd-down conversion and red-zone touchdown rates (every play): conversions or TDs / attempts or trips
+CFB_STATS.push(
+  { key: "o3rd", label: "3RD DOWN", higher: true, sit: true, plays: "offThirdA", total: "offThirdC" },
+  { key: "oRz", label: "RZ TD %", higher: true, sit: true, plays: "offRzN", total: "offRzTd" },
+  { key: "d3rd", label: "3RD DOWN", higher: false, sit: true, plays: "defThirdA", total: "defThirdC" },
+  { key: "dRz", label: "RZ TD %", higher: false, sit: true, plays: "defRzN", total: "defRzTd" },
+);
 // Rates from play-by-play (garbage time excluded): events / plays. `sec` is the matchup-card section.
 const RATE_DEFS = [
   ["Succ", "N", "SUCCESS", "success"], ["EarlyS", "EarlyN", "EARLY DN", "success"], ["LateS", "LateN", "LATE DN", "success"],
@@ -2684,6 +2692,12 @@ function cfbTeamStats(weekIdx) {
     for (const st of CFB_STATS.filter(x => x.epa)) {
       const plays = sum(withEpa, st.plays);
       stats[id][st.key] = plays ? sum(withEpa, cfb.adj && st.adjTotal ? st.adjTotal : st.total) / plays : null;
+    }
+    for (const st of CFB_STATS.filter(x => x.sit)) {
+      const counted = games.filter(g => g[st.plays] != null);
+      const n = sum(counted, st.plays);
+      stats[id][st.key] = n ? sum(counted, st.total) / n * 100 : null;
+      stats[id][st.key + "N"] = n;
     }
     // Rates: events over plays across the games, as a percentage
     const withPbp = games.filter(g => g.offN != null);
@@ -2749,7 +2763,7 @@ function cfbCard(g, ts) {
     if (va == null || vh == null) return "";
     const ra = sa[st.key + "Rank"], rh = sh[st.key + "Rank"];
     const fmt = v => {
-      if (st.rate) return v.toFixed(1) + "%";
+      if (st.rate || st.sit) return v.toFixed(1) + "%";
       if (!st.epa) return v.toFixed(1);
       const r = Math.round(v * 100) / 100;
       return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2);
@@ -2766,7 +2780,7 @@ function cfbCard(g, ts) {
   const show = sec => cfb.cards === "all" || cfb.cards === sec;
   const section = (title, list) => { const rows = list.map(statRow).join(""); return rows ? sub(title) + rows : ""; };
   const body = [
-    show("basic") ? section("POINTS & YARDS", CFB_STATS.filter(st => !st.epa && !st.rate)) : "",
+    show("basic") ? section("POINTS & YARDS", CFB_STATS.filter(st => !st.epa && !st.rate && !st.sit)) : "",
     show("epa") ? section(`${adjTag}EPA`, CFB_STATS.filter(st => st.epa)) : "",
     show("success") ? section(`${adjTag}SUCCESS RATE · OFFENSE`, CFB_STATS.filter(st => st.sec === "success" && st.side === "o")) +
       section(`${adjTag}SUCCESS RATE · DEFENSE`, CFB_STATS.filter(st => st.sec === "success" && st.side === "d")) : "",
@@ -2862,6 +2876,7 @@ const CFBT_GROUPS = {
   succD: ["dSucc", "dEarlyS", "dLateS", "dStdS", "dPdS"],
   pressO: ["oSacks", "oPress", "oHavoc"],
   pressD: ["dSacks", "dPress", "dHavoc"],
+  sit: ["o3rd", "oRz", "d3rd", "dRz"],
 };
 const CFBT_LABELS = {
   ppg: ["PTS/G", "points"], oppg: ["OPP/G", "allowed"], ypg: ["YDS/G", "yards"], oypg: ["OPP YDS", "allowed/g"],
@@ -2870,6 +2885,7 @@ const CFBT_LABELS = {
   oSucc: ["Success", "all plays"], oEarlyS: ["Early", "1st-2nd down"], oLateS: ["Late", "3rd-4th down"], oStdS: ["Std dn", "standard"], oPdS: ["Pass dn", "passing downs"],
   dSucc: ["Success", "allowed"], dEarlyS: ["Early", "allowed"], dLateS: ["Late", "allowed"], dStdS: ["Std dn", "allowed"], dPdS: ["Pass dn", "allowed"],
   oSacks: ["Sack %", "allowed"], oPress: ["Pressure", "allowed"], oHavoc: ["Havoc", "allowed"],
+  o3rd: ["3rd dn %", "offense"], oRz: ["RZ TD %", "offense"], d3rd: ["3rd dn %", "allowed"], dRz: ["RZ TD %", "allowed"],
   dSacks: ["Sack %", "per dropback"], dPress: ["Pressure", "per dropback"], dHavoc: ["Havoc", "per play"],
 };
 const newCfbt = () => ({ group: Object.keys(CFBT_GROUPS).includes(load("st.cfbtGroup", "basic")) ? load("st.cfbtGroup", "basic") : "basic", sort: null, dir: "best", conf: "all" });
@@ -2920,12 +2936,12 @@ function renderCfbTeams() {
   const arrow = key => cfbt.sort === key ? (cfbt.dir === "best" ? "▲" : "▼") : "";
   document.getElementById("cfbt-head").innerHTML =
     `<th><span class="th-plain">Team</span></th><th><span class="th-plain">GP</span></th>` +
-    keys.map(key => `<th class="${cfbt.sort === key ? "on" : ""}"><button type="button" data-tsort="${key}">${CFBT_LABELS[key][0]} <span class="arrow">${arrow(key)}</span></button><small>${CFBT_LABELS[key][1]}${cfb.adj && cfbt.group !== "basic" ? " · adj." : ""}</small></th>`).join("");
+    keys.map(key => `<th class="${cfbt.sort === key ? "on" : ""}"><button type="button" data-tsort="${key}">${CFBT_LABELS[key][0]} <span class="arrow">${arrow(key)}</span></button><small>${CFBT_LABELS[key][1]}${cfb.adj && !["basic", "sit"].includes(cfbt.group) ? " · adj." : ""}</small></th>`).join("");
 
   const n = ts.total;
   const fmt = (st, v) => {
     if (v == null) return "—";
-    if (st.rate) return v.toFixed(1) + '<span class="pc">%</span>';
+    if (st.rate || st.sit) return v.toFixed(1) + '<span class="pc">%</span>';
     if (!st.epa) return v.toFixed(1);
     const r = Math.round(v * 100) / 100;
     return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2);
@@ -3688,6 +3704,7 @@ function renderCfbWr() {
 const ctShowAll = new Set();
 const CT_ROWS = [
   ["Points / game", "ppg", "oppg"], ["Yards / game", "ypg", "oypg"],
+  ["3rd down %", "o3rd", "d3rd"], ["Red zone TD %", "oRz", "dRz"],
   ["EPA / play", "oEpa", "dEpa"], ["EPA / dropback", "oPass", "dPass"], ["EPA / rush", "oRush", "dRush"],
   ["Success rate", "oSucc", "dSucc"], ["Early downs", "oEarlyS", "dEarlyS"], ["Late downs", "oLateS", "dLateS"],
   ["Sack rate", "oSacks", "dSacks"], ["Pressure rate", "oPress", "dPress"], ["Havoc rate", "oHavoc", "dHavoc"],
@@ -3754,7 +3771,7 @@ function renderCfbTeamPage() {
   const scope = [cfb.span ? `the last ${cfb.span} games` : "all games", cfb.confOnly ? `${LG().conf} games only` : ""].filter(Boolean).join(", ");
   document.getElementById("cfb-statnote").textContent = `Overview and player stats use ${scope}${cfb.adj ? "; EPA and rates are adjusted for each opponent's strength" : ""}.`;
   const stat = key => CFB_STATS.find(x => x.key === key);
-  const fmt = (st, v) => v == null ? "—" : st.rate ? v.toFixed(1) + "%" : st.epa ? signed(v, 2) : v.toFixed(1);
+  const fmt = (st, v) => v == null ? "—" : st.rate || st.sit ? v.toFixed(1) + "%" : st.epa ? signed(v, 2) : v.toFixed(1);
   const cell = key => {
     const st = stat(key), v = s?.[key], r = s?.[key + "Rank"];
     const cls = r == null ? "" : r <= LG().top ? "rk-good" : r > n - LG().top ? "rk-bad" : "";
@@ -3764,7 +3781,7 @@ function renderCfbTeamPage() {
     <thead><tr><th>Per game</th><th>Offense</th><th>Defense</th></tr></thead>
     <tbody>${CT_ROWS.map(([label, o, dk]) => `<tr><td>${label}</td>${cell(o)}${cell(dk)}</tr>`).join("")}</tbody></table>`
     : `<div class="gd-msg">No games yet${cfb.confOnly ? ` in ${LG().conf} play` : ""}.</div>`;
-  document.getElementById("ct-ov-note").textContent = `Ranks are among all ${n} ${LG().league} teams. Offense sack, pressure and havoc rates are what the offense allowed (lower is better). Change the games counted with "Stats from" above.`;
+  document.getElementById("ct-ov-note").textContent = `Ranks are among all ${n} ${LG().league} teams. Offense sack, pressure and havoc rates are what the offense allowed (lower is better). 3rd down and red zone count every play and aren't opponent-adjusted; red zone TD % is touchdowns per trip inside the opponent's 20${FB === "nfl" ? " (ESPN's count)" : " (from play-by-play: drives that ran a play inside the 20)"}. Change the games counted with "Stats from" above.`;
 
   // Schedule: every game this season
   const sched = [];

@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fetch_cfb import (RESULT_COLS, EPA_COLS, ADJ_COLS, PBP_KEYS, PBP_COLS, RATE_SPLITS, ADJ_RATE_COLS,  # noqa: E402
-                      adjust_for_opponents, betting_line, calendar_weeks, get_json, load, overall_record)
+                      SIT_COLS, box_numbers, adjust_for_opponents, betting_line, calendar_weeks, get_json, load, overall_record)
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
 ATHLETE = "https://site.api.espn.com/apis/common/v3/sports/football/nfl/athletes"
@@ -457,6 +457,7 @@ def main():
 
     box_cache = load(DIR / "boxscores.json", {})
     line_cache = load(DIR / "lines.json", {})
+    sit_cache = load(DIR / "situational.json", {})
     sched = {g["espn"]: g for g in read_csv(SCHEDULE_CSV) if g.get("season") == str(year) and g.get("espn")}
     teams, results, out_weeks = {}, [], []
     confs = {div: {"name": name, "short": name} for div, (name, _) in DIVISIONS.items()}
@@ -504,17 +505,10 @@ def main():
                 "note": ((comp.get("notes") or [{}])[0] or {}).get("headline", ""), "line": line,
             })
             if st.get("state") == "post":
-                if ev["id"] not in box_cache:
+                if ev["id"] not in box_cache or ev["id"] not in sit_cache:
                     try:
-                        summary = get_json(f"{BASE}/summary?event={ev['id']}")
-                        yards = {}
-                        for t in (summary.get("boxscore") or {}).get("teams", []):
-                            stats = {x.get("name"): x.get("displayValue") for x in t.get("statistics", [])}
-                            try:
-                                yards[str(t["team"]["id"])] = int(str(stats.get("totalYards", "")).replace(",", ""))
-                            except ValueError:
-                                pass
-                        box_cache[ev["id"]] = yards
+                        y, third, rz = box_numbers(ev["id"], BASE)
+                        box_cache[ev["id"]], sit_cache[ev["id"]] = y, {"third": third, "rz": rz}
                         time.sleep(0.2)
                     except Exception as exc:
                         print(f"  box score {ev['id']}: {exc}", file=sys.stderr)
@@ -589,12 +583,18 @@ def main():
         except Exception as exc:
             print(f"  {kind} careers failed: {exc}", file=sys.stderr)
 
+    for r in results:
+        gid, me, opp = r[0], r[3], r[4]
+        sc = sit_cache.get(gid) or {}
+        t3, rz = sc.get("third") or {}, sc.get("rz") or {}
+        r.extend((t3.get(me) or [None, None]) + (rz.get(me) or [None, None]) + (t3.get(opp) or [None, None]) + (rz.get(opp) or [None, None]))
+    (DIR / "situational.json").write_text(json.dumps(sit_cache, separators=(",", ":"), sort_keys=True))
     (DIR / "boxscores.json").write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     (DIR / "lines.json").write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
     (DIR / "season.json").write_text(json.dumps({
         "season": year, "updated": now, "current": current, "poll": None, "ranks": {},
         "conferences": confs, "teams": dict(sorted(teams.items())), "weeks": out_weeks,
-        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS + ADJ_RATE_COLS, "results": results,
+        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS + ADJ_RATE_COLS + SIT_COLS, "results": results,
     }, separators=(",", ":")))
     print(f"Saved data/nfl/season.json: {len(out_weeks)} weeks, {len(done)} completed games")
 

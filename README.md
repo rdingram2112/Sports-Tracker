@@ -77,7 +77,9 @@ Pick **NFL** in the sport menu. It has the same views as college football (the s
 
 NFL live scores work the same way.
 
-**Team pages** (`#cfbteam-<id>`): tap a team in Team stats, on a matchup card, an opponent in a schedule, or the team name on a player page. Shows the team's ranking, record, conference record and record against the spread; an overview of offense and defense side by side (points, yards, EPA per play/dropback/rush, success rates, sack, pressure and havoc rates) with national ranks; the full schedule with results, betting lines and whether they covered; and passing, rushing and receiving stats for every player (tap one for their page). The overview and player stats follow the "Stats from" filters.
+**Team pages** (`#cfbteam-<id>`): tap a team in Team stats, on a matchup card, an opponent in a schedule, or the team name on a player page. Shows the team's ranking, record, conference record and record against the spread; an overview of offense and defense side by side (points, yards, 3rd down % and red zone TD %, EPA per play/dropback/rush, success rates, sack, pressure and havoc rates) with national ranks; the full schedule with results, betting lines and whether they covered; and passing, rushing and receiving stats for every player (tap one for their page). The overview and player stats follow the "Stats from" filters.
+
+3rd down % comes from each game's ESPN box score. Red zone TD % is touchdowns per trip inside the opponent's 20: for NFL games from ESPN's box score; for college (ESPN's college box scores have no red-zone line) from play-by-play, where a trip is a drive that ran a play inside the 20 and counts as a touchdown if it scored a rushing or passing TD. Both count every play (no garbage-time filter) and aren't opponent-adjusted. Team stats has a matching **3rd down & red zone** set.
 
 Lines for games played before the site started saving them are filled in once from CollegeFootballData's closing lines.
 

@@ -51,6 +51,9 @@ PBP_COLS = ["off" + k for k in PBP_KEYS] + ["def" + k for k in PBP_KEYS]
 RATE_SPLITS = [("Succ", "N", 150), ("EarlyS", "EarlyN", 120), ("LateS", "LateN", 80), ("StdS", "StdN", 120),
                ("PdS", "PdN", 80), ("Sacks", "Db", 120), ("Press", "Db", 120), ("Havoc", "N", 150)]
 ADJ_RATE_COLS = ["adjOff" + e for e, _, _ in RATE_SPLITS] + ["adjDef" + e for e, _, _ in RATE_SPLITS]
+# 3rd downs (from the box score, every play) and red-zone trips/touchdowns, offense then what the defense allowed
+SIT_COLS = ["offThirdC", "offThirdA", "offRzTd", "offRzN", "defThirdC", "defThirdA", "defRzTd", "defRzN"]
+THIRD_CACHE = DIR / "thirddowns.json"
 PLAYS_CACHE = DIR / "playstats.json"
 QB_CACHE = DIR / "qbgames.json"
 QB_OUT = DIR / "qbs.json"
@@ -336,7 +339,7 @@ def fetch_play_stats(year, weeks, games_by_id, teams):
     wanted = {}
     for w in weeks:
         done = [g["id"] for g in w["games"] if g["state"] == "post" and g["id"] in games_by_id]
-        if not done or all(f"{gid}|{tid}" in cache for gid in done for tid in games_by_id[gid]):
+        if not done or all(f"{gid}|{tid}" in cache and f"rz:{gid}|{tid}" in cache for gid in done for tid in games_by_id[gid]):
             continue
         stype = "regular" if w["stype"] == 2 else "postseason"
         wanted[(stype, w["week"] if stype == "regular" else 1)] = True
@@ -353,10 +356,27 @@ def fetch_play_stats(year, weeks, games_by_id, teams):
             tid = match_team(gid, offense, defense, games_by_id, teams)
             if tid:
                 cache[f"{gid}|{tid}"] = play_counts(ps)
+                cache[f"rz:{gid}|{tid}"] = red_zone(ps)
         print(f"Play-by-play {stype} week {week}: {len(plays)} plays")
         time.sleep(0.5)
     PLAYS_CACHE.write_text(json.dumps(cache, separators=(",", ":"), sort_keys=True))
     return cache
+
+
+def red_zone(plays):
+    """[touchdowns, trips] for one offense in one game: a trip is a drive that ran a play from inside the
+    opponent's 20; it counts as a touchdown if the drive scored a rushing or passing touchdown."""
+    drives = {}
+    for p in plays:
+        if p.get("playType") not in RUSH_TYPES | PASS_TYPES:
+            continue
+        d = drives.setdefault(p.get("driveId"), [False, False])
+        if (p.get("yardsToGoal") or 100) <= 20:
+            d[0] = True
+        if p.get("playType") in ("Rushing Touchdown", "Passing Touchdown"):
+            d[1] = True
+    trips = [d for d in drives.values() if d[0]]
+    return [sum(1 for d in trips if d[1]), len(trips)]
 
 
 def norm_name(name):
@@ -416,17 +436,39 @@ def fetch_epa(year, games_by_id, teams):
     return out
 
 
-def total_yards(game_id):
-    """{teamId: total yards} from the game's box score."""
-    summary = get_json(f"{BASE}/summary?event={game_id}")
-    out = {}
+def made_att(v):
+    """'6-10' -> [6, 10]"""
+    try:
+        a, b = str(v).split("-")
+        return [int(a), int(b)]
+    except (ValueError, AttributeError):
+        return None
+
+
+def box_numbers(game_id, base=None):
+    """({teamId: total yards}, {teamId: [3rd downs converted, attempted]}, {teamId: [red-zone TDs, trips]})
+    from the game's ESPN box score. College box scores have no red-zone line (that comes from play-by-play)."""
+    summary = get_json(f"{base or BASE}/summary?event={game_id}")
+    yards, third, rz = {}, {}, {}
     for t in (summary.get("boxscore") or {}).get("teams", []):
+        tid = str(t["team"]["id"])
         stats = {s.get("name"): s.get("displayValue") for s in t.get("statistics", [])}
+        labels = {s.get("label"): s.get("displayValue") for s in t.get("statistics", [])}
         try:
-            out[str(t["team"]["id"])] = int(str(stats.get("totalYards", "")).replace(",", ""))
+            yards[tid] = int(str(stats.get("totalYards", "")).replace(",", ""))
         except ValueError:
             pass
-    return out
+        if made_att(stats.get("thirdDownEff")):
+            third[tid] = made_att(stats.get("thirdDownEff"))
+        r = made_att(stats.get("redZoneAttempts") or labels.get("Red Zone (Made-Att)"))
+        if r:
+            rz[tid] = r
+    return yards, third, rz
+
+
+def total_yards(game_id):
+    """{teamId: total yards} from the game's box score."""
+    return box_numbers(game_id)[0]
 
 
 def main():
@@ -445,6 +487,7 @@ def main():
             confs[str(c["groupId"])] = {"name": c.get("name"), "short": c.get("shortName")}
 
     box_cache = load(BOX_CACHE, {})
+    third_cache = load(THIRD_CACHE, {})
     line_cache = load(LINE_CACHE, {})
     teams, results, out_weeks = {}, [], []
     fetched = 0
@@ -482,12 +525,13 @@ def main():
             })
             # Completed games: points and yards for both teams
             if st.get("state") == "post" and sides.get("away") and sides.get("home"):
-                if ev["id"] not in box_cache:
+                if ev["id"] not in box_cache or ev["id"] not in third_cache:
                     try:
-                        box_cache[ev["id"]] = total_yards(ev["id"])
+                        y, third, _ = box_numbers(ev["id"])
+                        box_cache[ev["id"]], third_cache[ev["id"]] = y, third
                     except Exception as exc:
                         print(f"  box score {ev['id']}: {exc}", file=sys.stderr)
-                        box_cache[ev["id"]] = {}
+                        box_cache.setdefault(ev["id"], {})
                     fetched += 1
                     time.sleep(0.1)
                 yards = box_cache[ev["id"]]
@@ -584,7 +628,13 @@ def main():
         import traceback
         traceback.print_exc()
         print(f"  receiver stats failed: {exc}", file=sys.stderr)
+    for r in results:
+        gid, me, opp = r[0], r[3], r[4]
+        t3 = third_cache.get(gid) or {}
+        rz_me, rz_opp = pbp.get(f"rz:{gid}|{me}"), pbp.get(f"rz:{gid}|{opp}")
+        r.extend((t3.get(me) or [None, None]) + (rz_me or [None, None]) + (t3.get(opp) or [None, None]) + (rz_opp or [None, None]))
     DIR.mkdir(parents=True, exist_ok=True)
+    THIRD_CACHE.write_text(json.dumps(third_cache, separators=(",", ":"), sort_keys=True))
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
     OUT.write_text(json.dumps({
@@ -596,7 +646,7 @@ def main():
         "conferences": confs,
         "teams": dict(sorted(teams.items())),
         "weeks": out_weeks,
-        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS + ADJ_RATE_COLS,
+        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS + ADJ_RATE_COLS + SIT_COLS,
         "results": results,
     }, separators=(",", ":")))
     print(f"Saved {OUT}: {len(out_weeks)} weeks, {len(results) // 2} completed games "
