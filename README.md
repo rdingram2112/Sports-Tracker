@@ -1,6 +1,6 @@
 # Sports Tracker
 
-Pick the sport with the menu at the top right: **NBA** or **College Football**.
+Pick the sport with the menu at the top right: **NBA**, **College Football** or **NFL**.
 
 ## NBA trailing stats
 
@@ -49,6 +49,20 @@ python3 -m http.server 8000
 ```
 
 Then open http://localhost:8000.
+
+## NFL
+
+Pick **NFL** in the sport menu. It has the same views as college football (the same page code, reading `data/nfl/` instead of `data/cfb/`):
+
+- **Team stats** (`#nflteams`): all 32 teams ranked across the league by points and yards, EPA per play/dropback/rush on offense and defense (raw or opponent-adjusted), success rates, and sack, pressure and havoc rates. Green is top 8, red bottom 8.
+- **Matchups** (`#nfl`): any week, with records, betting lines and both teams' stats side by side. Filter by division.
+- **Players** (`#nflplayers`): QBs (YDS/G, TD, INT, EPA/DB, CPOE), RBs (rushing, role, efficiency, receiving) and WRs/TEs (receiving, role with target share, air-yard share and aDOT, efficiency). Tap a player for his page: bio with college and draft, this season's box scores and career by season with EPA.
+- **Team pages** (`#nflteam-<id>`), with record, division record and record against the spread, the overview, the schedule with lines and covers, and every player's stats.
+- **Live scores** (`#nfllive`), with possession, down and distance, leaders and box scores, refreshed every 30 seconds.
+
+"Stats from" works the same way, with **Division games only** in place of conference games.
+
+`scripts/fetch_nfl.py` builds it all, and the daily GitHub Action runs it. Schedule, scores, records, yards, lines before kickoff, bios and career lines come from ESPN. Play-by-play comes from [nflverse](https://github.com/nflverse): EPA, win probability, air yards and expected completion % for every snap, plus closing lines for finished games and the IDs that link nflverse players to ESPN (for photos). Box-score totals count every play and match ESPN's official numbers. EPA and rate stats leave out garbage time (the offense's win probability under 5% or over 95%). Success uses the college yardage rule (50% of the yards to go on 1st down, 70% on 2nd, 100% on 3rd/4th). Past seasons' EPA for career tables is computed once from each season's nflverse play-by-play since 2016 (`data/nfl/pastepa.json`).
 
 ## College football
 
