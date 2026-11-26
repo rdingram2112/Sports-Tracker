@@ -54,6 +54,10 @@ Then open http://localhost:8000.
 
 **Team stats** (`#cfbteams`): every FBS team ranked nationally, switching between Points & yards (PTS/G, OPP/G, YDS/G, OPP YDS), EPA offense and EPA defense (per play, per dropback, per rush). Sort by any column and filter to one conference. "Stats from" (season, last 3, last 5 or any number of games, and conference games only) is shared with Matchups.
 
+**Team pages** (`#cfbteam-<id>`): tap a team in Team stats, on a matchup card, an opponent in a schedule, or the team name on a player page. Shows the team's ranking, record, conference record and record against the spread; an overview of offense and defense side by side (points, yards, EPA per play/dropback/rush, success rates, sack, pressure and havoc rates) with national ranks; the full schedule with results, betting lines and whether they covered; and passing, rushing and receiving stats for every player (tap one for their page). The overview and player stats follow the "Stats from" filters.
+
+Lines for games played before the site started saving them are filled in once from CollegeFootballData's closing lines.
+
 **Matchups** (`#cfb`): pick any week of the season (‹ › or the week menu). Past weeks show final scores, the current week shows upcoming games with the betting line (spread, over/under, moneyline), and future weeks fill in as ESPN posts them. Rankings are ESPN's for each game (CFP once released, AP before). Filter to Top 25 games or any conference.
 
 Each card compares the two teams' points and total yards per game, scored and allowed, with national ranks among FBS teams. "Stats from" limits those to the whole season or each team's last 3 or 5 games, and optionally conference games only; they count games played before the selected week.

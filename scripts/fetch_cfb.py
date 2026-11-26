@@ -107,6 +107,50 @@ def betting_line(comp):
     return line if any(line[k] for k in ("spread", "total", "mlAway", "mlHome")) else None
 
 
+LINE_BOOKS = ("DraftKings", "ESPN Bet", "Bovada", "consensus")
+
+
+def backfill_lines(year, out_weeks, teams, line_cache):
+    """Completed games with no saved line (before we started saving them) get CollegeFootballData's
+    closing line, in the same shape as ESPN's. Each game is only looked up once."""
+    key = os.environ.get("CFBD_API_KEY")
+    tried = set(line_cache.get("_tried", []))
+    missing = {}
+    for w in out_weeks:
+        for g in w["games"]:
+            if g["state"] == "post" and not g.get("line") and g["id"] not in tried:
+                missing.setdefault("regular" if w["stype"] == 2 else "postseason", []).append(g)
+    if not key or not missing:
+        return
+    filled = 0
+    for stype, games in missing.items():
+        try:
+            rows = {str(r["id"]): r for r in cfbd_get(f"/lines?year={year}&seasonType={stype}", key)}
+        except Exception as exc:
+            print(f"  betting lines ({stype}): {exc}", file=sys.stderr)
+            continue
+        for g in games:
+            tried.add(g["id"])
+            r = rows.get(g["id"])
+            books = {l.get("provider"): l for l in (r or {}).get("lines", [])}
+            l = next((books[b] for b in LINE_BOOKS if b in books), None) or next(iter(books.values()), None)
+            if not l:
+                continue
+            sp = l.get("spread")
+            abbr = lambda side: teams.get((g.get(side) or {}).get("id"), {}).get("abbr", "")
+            spread = None
+            if sp is not None:
+                spread = "EVEN" if sp == 0 else f"{abbr('home')} {sp:g}" if sp < 0 else f"{abbr('away')} -{sp:g}"
+            ml = lambda v: None if v is None else f"{v:+d}"
+            line = {"book": l.get("provider"), "spread": spread, "total": l.get("overUnder"),
+                    "mlAway": ml(l.get("awayMoneyline")), "mlHome": ml(l.get("homeMoneyline"))}
+            if any(line[k] for k in ("spread", "total", "mlAway", "mlHome")):
+                g["line"] = line_cache[g["id"]] = line
+                filled += 1
+    line_cache["_tried"] = sorted(tried)
+    print(f"Betting lines: filled in {filled} past games from CollegeFootballData")
+
+
 def calendar_weeks(scoreboard):
     """Every week of the season in order: dicts with seasontype, week, label, dates, start, end."""
     weeks = []
@@ -459,6 +503,8 @@ def main():
         out_weeks.append({**{k: w[k] for k in ("label", "dates", "stype", "week", "start", "end")}, "games": games})
         print(f"{w['label']}: {len(games)} games")
         time.sleep(0.2)
+
+    backfill_lines(first.get("season", {}).get("year"), out_weeks, teams, line_cache)
 
     # Rankings: College Football Playoff when it's out, otherwise AP Top 25.
     polls = get_json(f"{BASE}/rankings").get("rankings", [])
