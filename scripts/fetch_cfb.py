@@ -510,6 +510,19 @@ def main():
                              DIR / "qbcareercache.json", DIR / "qbcareers.json", get_json, cfbd_get, load)
     except Exception as exc:
         print(f"  quarterback careers failed: {exc}", file=sys.stderr)
+
+    # Running backs for the Players view and RB pages
+    import cfb_rb
+    try:
+        cfb_rb.build(first.get("season", {}).get("year"), out_weeks, games_by_id, teams, results_meta,
+                     os.environ.get("CFBD_API_KEY"), DIR / "rbgames.json", DIR / "rbs.json",
+                     cfbd_get, is_garbage_time, match_team, load, norm_name)
+        cfb_rb.build_careers(first.get("season", {}).get("year"), os.environ.get("CFBD_API_KEY"), DIR / "rbs.json",
+                             DIR / "rbcareercache.json", DIR / "rbcareers.json", get_json, cfbd_get, load)
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        print(f"  running back stats failed: {exc}", file=sys.stderr)
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))

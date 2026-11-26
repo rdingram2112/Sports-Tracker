@@ -52,6 +52,8 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+#cfbp-box .ls { display: none; }
+#cfbp-box .lf { display: inline; }
 [hidden] { display: none !important; }
 body {
   margin: 0;
@@ -584,6 +586,9 @@ tbody tr:hover td { background: var(--head-bg); }
 .qblog .qgame .wk { font-size: 11px; color: var(--muted); }
 .qblog .cq-team { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .qblog .cq-team .logo { width: 16px; height: 16px; }
+.qblog .rec { white-space: nowrap; }
+@media (max-width: 380px) { #cq-log .qblog th, #cq-log .qblog td { padding-inline: 3px; } }
+.qblog .rec small { display: block; font-size: 11px; color: var(--muted, inherit); opacity: 0.8; }
 #view-cfbqb .qblog-wrap { background: var(--surface); }
 #view-cfbqb .qblog { min-width: 100%; }
 .cfbp .tteam .tn span { display: flex; align-items: center; gap: 4px; }
@@ -596,7 +601,9 @@ tbody tr:hover td { background: var(--head-bg); }
   #cfbp-box .pc { display: none; }
   #cfbp-box td { font-size: 13px; }
   #cfbp-box th, #cfbp-box td { padding-inline: 3px; }
-  #cfbp-box th button { font-size: 12px; letter-spacing: 0.02em; }
+  #cfbp-box th button { font-size: 12px; letter-spacing: 0.02em; line-height: 1.1; text-align: right; justify-content: flex-end; }
+  #cfbp-box th { white-space: normal; vertical-align: bottom; }
+  #cfbp-box .lf { display: none; } #cfbp-box .ls { display: inline; }
 }
 .cfbt th.on button { color: var(--accent); }
 .cfbt td.on { background: var(--edge-bg); font-weight: 600; }
@@ -1069,12 +1076,12 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <div class="pp-section">
         <h2 id="cq-log-title">This season</h2>
         <div class="qblog-wrap" id="cq-log"></div>
-        <p class="pp-note">EPA per dropback includes sacks; garbage time excluded. Rushing follows college scoring, so sacks count as rushes for lost yards.</p>
+        <p class="pp-note" id="cq-log-note">EPA per dropback includes sacks; garbage time excluded. Rushing follows college scoring, so sacks count as rushes for lost yards.</p>
       </div>
       <div class="pp-section">
         <h2>Career</h2>
         <div class="qblog-wrap" id="cq-career"></div>
-        <p class="pp-note">Season lines from ESPN, at every school he played for. EPA/DB for past seasons is CollegeFootballData's EPA per pass play (garbage time excluded); this season's is ours, with sacks included. CPOE is available for this season only.</p>
+        <p class="pp-note" id="cq-career-note">Season lines from ESPN, at every school he played for. EPA/DB for past seasons is CollegeFootballData's EPA per pass play (garbage time excluded); this season's is ours, with sacks included. CPOE is available for this season only.</p>
       </div>
     </div>
   </section>
@@ -1084,7 +1091,16 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <div class="cfb-controls">
         <label class="cfb-filter" for="cfbp-pos">
           <span>Position</span>
-          <select id="cfbp-pos"><option value="QB">Quarterbacks</option></select>
+          <select id="cfbp-pos"><option value="QB">Quarterbacks</option><option value="RB">Running backs</option></select>
+        </label>
+        <label class="cfb-filter" for="cfbp-group" id="cfbp-group-wrap" hidden>
+          <span>Stats</span>
+          <select id="cfbp-group">
+            <option value="rush">Rushing</option>
+            <option value="role">Role</option>
+            <option value="eff">Efficiency</option>
+            <option value="recv">Receiving</option>
+          </select>
         </label>
         <label class="cfb-filter" for="cfbp-conf">
           <span>Show</span>
@@ -2815,7 +2831,12 @@ function loadCfbQbs() {
     .finally(() => { cfbq.loading = false; if (state.view === "cfbplayers") render(); });
 }
 
+const cfbpos = { pos: ["QB", "RB"].includes(load("st.cfbPos", "QB")) ? load("st.cfbPos", "QB") : "QB" };
 function renderCfbPlayers() {
+  document.getElementById("cfbp-pos").value = cfbpos.pos;
+  document.getElementById("cfbp-group-wrap").hidden = cfbpos.pos !== "RB";
+  if (cfbpos.pos === "RB") return renderCfbRbs();
+  document.getElementById("headline").textContent = "College football quarterbacks";
   const rowsEl = document.getElementById("cfbp-rows");
   if (!cfb.data) loadCfb();
   if (!cfbq.data) loadCfbQbs();
@@ -2891,7 +2912,7 @@ function renderCfbPlayers() {
       return `<td class="${cfbq.sort === st.key ? "on" : ""}"><span class="pv">${v == null ? "—" : st.fmt(v)}</span><span class="pp ${cls}">${rr ? ordinal(rr) : "&nbsp;"}</span></td>`;
     }).join("");
     const open = cfbq.open === x.id;
-    const row = `<tr class="qrow prow${open ? " open" : ""}" data-pid="${esc(x.id)}"><td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${esc(p.name)}: open player page"><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${(x.comp / x.att * 100).toFixed(1)}%</span></div></div></button></td>
+    const row = `<tr data-kind="qb" class="qrow prow${open ? " open" : ""}" data-pid="${esc(x.id)}"><td><button type="button" class="pbtn" aria-expanded="${open}" aria-label="${esc(p.name)}: open player page"><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${(x.comp / x.att * 100).toFixed(1)}%</span></div></div></button></td>
       <td class="dim">${x.gp}</td>${cells}</tr>`;
     return row;
   }).join("") || `<tr><td colspan="7" class="ploading">No qualified quarterbacks.</td></tr>`;
@@ -2913,6 +2934,9 @@ const signed = (v, digits) => { const r = Math.round(v * 10 ** digits) / 10 ** d
 const titleSlug = slug => (slug || "").split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
 function renderCfbQb() {
+  if (state.cqKind === "rb") return renderCfbRb();
+  document.getElementById("cq-log-note").textContent = "EPA per dropback includes sacks; garbage time excluded. Rushing follows college scoring, so sacks count as rushes for lost yards.";
+  document.getElementById("cq-career-note").textContent = "Season lines from ESPN, at every school he played for. EPA/DB for past seasons is CollegeFootballData's EPA per pass play (garbage time excluded); this season's is ours, with sacks included. CPOE is available for this season only.";
   const id = state.cfbqbId;
   const head = document.getElementById("cq-head");
   if (!cfb.data) loadCfb();
@@ -3022,11 +3046,263 @@ document.getElementById("cfbp-head").addEventListener("click", e => {
   render();
 });
 document.getElementById("cfbp-conf").addEventListener("change", e => { cfbq.conf = e.target.value; render(); });
+/* College football running backs */
+const cfbr = { data: null, loading: false, error: false, sort: "ypg", dir: "best",
+  group: ["rush", "role", "eff", "recv"].includes(load("st.cfbRbGroup", "rush")) ? load("st.cfbRbGroup", "rush") : "rush",
+  careers: null, careersLoading: false };
+const pctFmt = v => v.toFixed(1) + '<span class="pc">%</span>';
+const RB_STATS = [
+  { key: "car", g: "rush", label: "CAR", hint: "carries", higher: true, fmt: v => String(v) },
+  { key: "ypg", g: "rush", label: "YDS/G", hint: "rushing", higher: true, fmt: v => v.toFixed(1) },
+  { key: "ypc", g: "rush", label: "YPC", hint: "per carry", higher: true, fmt: v => v.toFixed(1) },
+  { key: "rtd", g: "rush", label: "TD", hint: "rushing", higher: true, fmt: v => String(v) },
+  { key: "share", g: "role", label: "CARRY %", hint: "of team runs", higher: true, fmt: pctFmt },
+  { key: "rz", g: "role", label: "RZ CAR", hint: "inside 20", higher: true, fmt: v => String(v) },
+  { key: "gl", g: "role", label: "GL CAR", hint: "inside 5", higher: true, fmt: v => String(v) },
+  { key: "sy", g: "role", label: "SHORT YDG", hint: "3rd/4th & ≤2", higher: true, fmt: pctFmt },
+  { key: "epa", g: "eff", label: "EPA/RUSH", short: "EPA", hint: "per carry", higher: true, fmt: v => signed(v, 2) },
+  { key: "succ", g: "eff", label: "SUCCESS", short: "SUCC", hint: "rate", higher: true, fmt: pctFmt },
+  { key: "expl", g: "eff", label: "EXPL", hint: "12+ yds", higher: true, fmt: pctFmt },
+  { key: "stuff", g: "eff", label: "STUFF", hint: "≤0 yds", higher: false, fmt: pctFmt },
+  { key: "hl", g: "eff", label: "HL YDS", short: "HL", hint: "per opp.", higher: true, fmt: v => v.toFixed(2) },
+  { key: "tgt", g: "recv", label: "TGT", hint: "targets", higher: true, fmt: v => String(v) },
+  { key: "rec", g: "recv", label: "REC", hint: "catches", higher: true, fmt: v => String(v) },
+  { key: "recYds", g: "recv", label: "YDS", hint: "receiving", higher: true, fmt: v => String(v) },
+  { key: "recTd", g: "recv", label: "TD", hint: "receiving", higher: true, fmt: v => String(v) },
+  { key: "tgtEpa", g: "recv", label: "EPA/TGT", hint: "per target", higher: true, fmt: v => signed(v, 2) },
+];
+const RB_SUM = ["car", "ryds", "rtd", "rec", "recYds", "recTd", "n", "epa", "succ", "expl12", "expl20", "stuff", "hl", "hlOpp",
+  "rz", "gl", "syAtt", "syConv", "tgt", "tgtN", "tgtEpa", "teamRush"];
+
+function loadCfbRbs() {
+  if (cfbr.data || cfbr.loading) return;
+  cfbr.loading = true;
+  fetch("data/cfb/rbs.json", { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => {
+      const c = Object.fromEntries(d.cols.map((k, i) => [k, i]));
+      d.list = d.rows.map(r => Object.fromEntries(d.cols.map(k => [k, r[c[k]]])));
+      cfbr.data = d;
+    })
+    .catch(() => { cfbr.error = true; })
+    .finally(() => { cfbr.loading = false; if (sportOf(state.view) === "cfb") render(); });
+}
+
+// Each team's games in the "Stats from" window
+function cfbTeamWindows() {
+  const teamGames = {};
+  for (const r of cfb.data.rows) {
+    if (cfb.confOnly && !r.conf) continue;
+    (teamGames[r.team] ||= []).push(r);
+  }
+  const out = {};
+  for (const [tid, list] of Object.entries(teamGames)) {
+    const games = cfb.span ? list.slice(-cfb.span) : list;
+    out[tid] = { weeks: new Set(games.map(g => g.week)), count: games.length };
+  }
+  return out;
+}
+
+function renderCfbRbs() {
+  const rowsEl = document.getElementById("cfbp-rows");
+  document.getElementById("headline").textContent = "College football running backs";
+  if (!cfb.data) loadCfb();
+  if (!cfbr.data) loadCfbRbs();
+  if (!cfb.data || !cfbr.data) {
+    rowsEl.innerHTML = `<tr><td colspan="7" class="ploading">${cfb.error || cfbr.error ? "Couldn't load the running back data." : "Loading running backs…"}</td></tr>`;
+    return;
+  }
+  const d = cfb.data, q = cfbr.data;
+  document.getElementById("season").textContent = `College football · ${d.season} season`;
+  document.getElementById("updated").textContent = "Running backs with at least 6 carries per team game in the selected games.";
+  document.getElementById("cfbp-group").value = cfbr.group;
+  syncCfbStatBar();
+  const win = cfbTeamWindows();
+  const scope = [cfb.span ? `each team's last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
+  document.getElementById("cfb-statnote").textContent = `Stats use ${scope}. EPA, success, explosive, stuff and highlight-yard numbers exclude garbage time; highlight yards are yards beyond what the line is credited with, per run of 4+ yards. These aren't opponent-adjusted.`;
+
+  const agg = {};
+  for (const g of q.list) {
+    const w = win[g.team];
+    if (!w || !w.weeks.has(g.week)) continue;
+    if (cfb.confOnly && !g.confGame) continue;
+    const a = (agg[g.player] ||= Object.fromEntries([["team", g.team], ["gp", 0], ...RB_SUM.map(k => [k, 0])]));
+    a.gp++;
+    for (const k of RB_SUM) a[k] += g[k];
+    a.team = g.team;
+  }
+  const rbs = Object.entries(agg)
+    .filter(([, a]) => d.conferences[d.teams[a.team]?.conf] && a.car >= 6 * (win[a.team]?.count || 0) && a.car > 0)
+    .map(([pid, a]) => ({
+      id: pid, ...a,
+      ypg: a.ryds / a.gp, ypc: a.ryds / a.car,
+      share: a.teamRush ? a.car / a.teamRush * 100 : null,
+      sy: a.syAtt >= 4 ? a.syConv / a.syAtt * 100 : null,
+      // Efficiency needs most of his carries matched to play-by-play (garbage time aside)
+      ...(a.n >= Math.max(10, a.car * 0.5) ? {
+        epa: a.epa / a.n, succ: a.succ / a.n * 100, expl: a.expl12 / a.n * 100, stuff: a.stuff / a.n * 100,
+        hl: a.hlOpp ? a.hl / a.hlOpp : null,
+      } : { epa: null, succ: null, expl: null, stuff: null, hl: null }),
+      tgtEpa: a.tgtN >= 8 ? a.tgtEpa / a.tgtN : null,
+    }));
+  for (const st of RB_STATS) {
+    const vals = rbs.map(x => x[st.key]).filter(v => v != null);
+    for (const x of rbs) if (x[st.key] != null) x[st.key + "Rank"] = 1 + vals.filter(v => st.higher ? v > x[st.key] : v < x[st.key]).length;
+  }
+  const n = rbs.length;
+  const sel = document.getElementById("cfbp-conf");
+  const confs = Object.entries(d.conferences).sort((x, y) => x[1].short.localeCompare(y[1].short));
+  const opts = [["all", "All FBS"], ...confs.map(([id, c]) => [id, c.short])];
+  if (sel.options.length !== opts.length) sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  sel.value = cfbq.conf;
+  const stats = RB_STATS.filter(st => st.g === cfbr.group);
+  if (!stats.some(st => st.key === cfbr.sort)) { cfbr.sort = stats[0].key === "car" ? "ypg" : stats[0].key; cfbr.dir = "best"; }
+  let list = cfbq.conf === "all" ? rbs : rbs.filter(x => d.teams[x.team]?.conf === cfbq.conf);
+  const k = cfbr.sort;
+  list.sort((a, b) => ((cfbr.dir === "best" ? 1 : -1) * ((a[k + "Rank"] ?? 999) - (b[k + "Rank"] ?? 999))) || a.id.localeCompare(b.id));
+
+  const arrow = key => cfbr.sort === key ? (cfbr.dir === "best" ? "▲" : "▼") : "";
+  document.getElementById("cfbp-box").dataset.group = "rb-" + cfbr.group;
+  document.getElementById("cfbp-head").innerHTML = `<th><span class="th-plain">Running back</span></th><th><span class="th-plain">GP</span></th>` +
+    stats.map(st => `<th class="${cfbr.sort === st.key ? "on" : ""}"><button type="button" data-rsort="${st.key}">${st.short ? `<span class="lf">${st.label}</span><span class="ls">${st.short}</span>` : st.label} <span class="arrow">${arrow(st.key)}</span></button><small>${st.hint}</small></th>`).join("");
+  const band = Math.max(5, Math.round(n * 0.2));
+  rowsEl.innerHTML = list.map((x, i) => {
+    const p = q.players[x.id] || { name: x.id };
+    const t = d.teams[x.team] || {};
+    const shot = `<span class="shot" data-init="${initials(p.name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/college-football/players/full/${encodeURIComponent(x.id)}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="34" height="34"></span>`;
+    const cells = stats.map(st => {
+      const v = x[st.key], rr = x[st.key + "Rank"];
+      const cls = rr == null ? "" : rr <= band ? "rk-good" : rr > n - band ? "rk-bad" : "";
+      return `<td class="${cfbr.sort === st.key ? "on" : ""}"><span class="pv">${v == null ? "—" : st.fmt(v)}</span><span class="pp ${cls}">${rr ? ordinal(rr) : "&nbsp;"}</span></td>`;
+    }).join("");
+    return `<tr data-kind="rb" class="qrow prow" data-pid="${esc(x.id)}"><td><button type="button" class="pbtn" aria-label="${esc(p.name)}: open player page"><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${x.car} car</span></div></div></button></td>
+      <td class="dim">${x.gp}</td>${cells}</tr>`;
+  }).join("") || `<tr><td colspan="7" class="ploading">No qualified running backs.</td></tr>`;
+}
+
+function loadRbCareers() {
+  if (cfbr.careers || cfbr.careersLoading) return;
+  cfbr.careersLoading = true;
+  fetch("data/cfb/rbcareers.json", { cache: "no-cache" })
+    .then(r => r.ok ? r.json() : {})
+    .then(d => { cfbr.careers = d; })
+    .catch(() => { cfbr.careers = {}; })
+    .finally(() => { cfbr.careersLoading = false; if (state.view === "cfbqb") render(); });
+}
+
+function renderCfbRb() {
+  const id = state.cfbqbId;
+  const head = document.getElementById("cq-head");
+  if (!cfb.data) loadCfb();
+  if (!cfbr.data) loadCfbRbs();
+  if (!cfbr.careers) loadRbCareers();
+  if (!cfb.data || !cfbr.data || !cfbr.careers) {
+    head.innerHTML = `<div class="gd-msg">${cfb.error || cfbr.error ? "Couldn't load this running back." : "Loading…"}</div>`;
+    document.getElementById("cq-log").innerHTML = "";
+    document.getElementById("cq-career").innerHTML = "";
+    return;
+  }
+  document.getElementById("cq-log-note").textContent = "EPA per rush and success rate exclude garbage time. REC is catches/receiving yards, with receiving TDs underneath. Success: at least 50% of the yards to go on 1st down, 70% on 2nd, 100% on 3rd/4th.";
+  document.getElementById("cq-career-note").textContent = "Season lines from ESPN, at every school he played for. EPA/rush for past seasons is CollegeFootballData's (garbage time excluded); this season's is ours.";
+  const d = cfb.data, q = cfbr.data;
+  const bio = cfbr.careers[id] || {};
+  const name = bio.name || q.players[id]?.name || "Running back";
+  document.getElementById("headline").textContent = name;
+  document.getElementById("season").textContent = `College football · ${d.season} season`;
+  document.getElementById("updated").textContent = "";
+
+  const start = {};
+  for (const w of d.weeks) for (const g of w.games) start[g.id] = g.start;
+  const meta = {};
+  for (const r of d.rows) meta[r.gameId + "|" + r.team] = r;
+  const games = q.list.filter(g => g.player === id).map(g => {
+    const m = meta[g.gameId + "|" + g.team] || {};
+    return { ...g, m, day: start[g.gameId] ? etDay(start[g.gameId]) : null,
+      opp: d.teams[m.opp]?.abbr || d.teams[m.opp]?.name || "", home: m.site !== -1 };
+  });
+  const sum = k => games.reduce((a, g) => a + (g[k] || 0), 0);
+  const teamId = games.length ? games[games.length - 1].team : (q.players[id]?.team || "");
+  const team = d.teams[teamId] || {};
+  const epa = sum("n") ? sum("epa") / sum("n") : null;
+  const succ = sum("n") ? sum("succ") / sum("n") * 100 : null;
+
+  const photo = `https://a.espncdn.com/i/headshots/college-football/players/full/${encodeURIComponent(id)}.png`;
+  const fact = (label, value) => value ? `<div><dt>${label}</dt><dd>${value}</dd></div>` : "";
+  head.innerHTML = `
+    <div class="pp-photo" data-init="${initials(name)}"><img src="${photo}" alt="${esc(name)}" width="168" height="168"></div>
+    <div class="pp-id">
+      <div class="pp-team">${teamId ? cfbLogo({ ...team, id: teamId }).replace(/width="34" height="34"/g, 'width="26" height="26"') : ""}<span>${esc(team.name || "")} · ${esc(bio.position || "RB")}${bio.jersey ? ` · ${esc(bio.jersey)}` : ""}</span></div>
+      <dl class="pp-facts">
+        ${fact("Height / weight", esc([bio.height, bio.weight].filter(Boolean).join(", ")))}
+        ${fact("Hometown", esc(bio.birthPlace || ""))}
+        ${games.length ? fact("This season", `${sum("car")} car · ${(sum("ryds") / games.length).toFixed(1)} YDS/G · ${sum("rtd")} TD`) : ""}
+        ${epa != null ? fact("EPA/rush · Success", `${signed(epa, 2)} · ${succ.toFixed(1)}%`) : ""}
+      </dl>
+    </div>`;
+  head.querySelector(".pp-photo img").addEventListener("error", e => { e.target.parentNode.classList.add("noimg"); e.target.remove(); });
+
+  document.getElementById("cq-log-title").textContent = `${d.season} box scores`;
+  const recCell = (r, y, td) => r ? `<span class="rec">${r}/${Number(y).toLocaleString().replace("-", "−")}${td ? `<small>${td} TD</small>` : ""}</span>` : "—";
+  const ypc = (y, c) => c ? (y / c).toFixed(1) : "—";
+  document.getElementById("cq-log").innerHTML = games.length ? `<table class="box qblog">
+    <thead><tr><th>Game</th><th>Result</th><th>CAR</th><th>YDS</th><th>YPC</th><th>TD</th><th>EPA</th><th>SUCC</th><th>REC</th></tr></thead>
+    <tbody>${[...games].reverse().map(g => {
+      const won = g.m.pf > g.m.pa;
+      return `<tr>
+        <td><div class="qgame"><span class="wk">${g.day ? shortDay(g.day) : "Week " + (g.week + 1)}</span><span>${g.home ? "vs" : "@"} ${esc(g.opp)}</span></div></td>
+        <td><span class="result ${won ? "w" : "l"}">${won ? "W" : "L"} ${g.m.pf ?? ""}–${g.m.pa ?? ""}</span></td>
+        <td>${g.car}</td><td class="pts">${g.ryds}</td><td>${ypc(g.ryds, g.car)}</td><td>${g.rtd}</td>
+        <td>${g.n ? signed(g.epa / g.n, 2) : "—"}</td><td>${g.n ? Math.round(g.succ / g.n * 100) + "%" : "—"}</td>
+        <td>${recCell(g.rec, g.recYds, g.recTd)}</td></tr>`;
+    }).join("")}
+    <tr class="totals"><td>Season</td><td>${games.filter(g => g.m.pf > g.m.pa).length}-${games.filter(g => g.m.pf < g.m.pa).length}</td>
+      <td>${sum("car")}</td><td>${sum("ryds")}</td><td>${ypc(sum("ryds"), sum("car"))}</td><td>${sum("rtd")}</td>
+      <td>${epa == null ? "—" : signed(epa, 2)}</td><td>${succ == null ? "—" : succ.toFixed(1) + "%"}</td>
+      <td>${recCell(sum("rec"), sum("recYds"), sum("recTd"))}</td></tr>
+    </tbody></table>` : `<div class="gd-msg">No games this season.</div>`;
+
+  const thisYear = String(d.season);
+  const rows = (bio.seasons || []).filter(s => s.car || s.rec).map(s => {
+    const known = d.teams[s.teamId];
+    return { ...s, tname: known ? known.name : titleSlug(s.teamSlug), epa: s.season === thisYear ? epa : s.epa };
+  });
+  const tot = k => rows.reduce((a, s) => a + (s[k] || 0), 0);
+  const ew = rows.filter(s => s.epa != null);
+  const careerEpa = ew.length ? ew.reduce((a, s) => a + s.epa * (s.car || 0), 0) / ew.reduce((a, s) => a + (s.car || 0), 0) : null;
+  document.getElementById("cq-career").innerHTML = rows.length ? `<table class="box qblog">
+    <thead><tr><th>Season</th><th>CAR</th><th>YDS</th><th>YPC</th><th>TD</th><th>LONG</th><th>EPA</th><th>REC</th></tr></thead>
+    <tbody>${rows.map(s => `<tr>
+      <td><div class="qgame"><span class="wk">${esc(s.season)}</span><span class="cq-team">${s.teamId ? cfbLogo({ id: s.teamId }).replace(/width="34" height="34"/g, 'width="16" height="16"') : ""}${esc(s.tname)}</span></div></td>
+      <td>${s.car ?? 0}</td><td class="pts">${(s.ryds ?? 0).toLocaleString()}</td><td>${ypc(s.ryds || 0, s.car)}</td><td>${s.rtd ?? 0}</td><td>${s.rlng ?? "—"}</td>
+      <td>${s.epa == null ? "—" : signed(s.epa, 2)}</td><td>${recCell(s.rec ?? 0, s.recYds ?? 0, s.recTd ?? 0)}</td></tr>`).join("")}
+    <tr class="totals"><td>Career</td><td>${tot("car")}</td><td>${tot("ryds").toLocaleString()}</td><td>${ypc(tot("ryds"), tot("car"))}</td><td>${tot("rtd")}</td><td>—</td>
+      <td>${careerEpa == null ? "—" : signed(careerEpa, 2)}</td><td>${recCell(tot("rec"), tot("recYds"), tot("recTd"))}</td></tr>
+    </tbody></table>` : `<div class="gd-msg">Career stats will appear after the next daily update.</div>`;
+}
+
+document.getElementById("cfbp-pos").addEventListener("change", e => {
+  cfbpos.pos = e.target.value;
+  save("st.cfbPos", cfbpos.pos);
+  render();
+});
+document.getElementById("cfbp-group").addEventListener("change", e => {
+  cfbr.group = e.target.value;
+  save("st.cfbRbGroup", cfbr.group);
+  render();
+});
+document.getElementById("cfbp-head").addEventListener("click", e => {
+  const b = e.target.closest("button[data-rsort]");
+  if (!b) return;
+  if (cfbr.sort === b.dataset.rsort) cfbr.dir = cfbr.dir === "best" ? "worst" : "best";
+  else { cfbr.sort = b.dataset.rsort; cfbr.dir = "best"; }
+  render();
+});
+
 // Tapping a quarterback opens his page (its own link, so Back works)
 document.getElementById("cfbp-rows").addEventListener("click", e => {
   const row = e.target.closest("tr.qrow");
   if (!row) return;
-  location.hash = "cfbqb-" + row.dataset.pid;
+  location.hash = (row.dataset.kind === "rb" ? "cfbrb-" : "cfbqb-") + row.dataset.pid;
 });
 document.getElementById("cfbp-rows").addEventListener("error", e => {
   if (e.target.tagName !== "IMG" || !e.target.closest(".shot")) return;
@@ -3081,7 +3357,7 @@ function render() {
   headlines.player = "Player";
   headlines.cfb = "College football matchups";
   headlines.cfbteams = "College football team stats";
-  headlines.cfbplayers = "College football quarterbacks";
+  headlines.cfbplayers = cfbpos.pos === "RB" ? "College football running backs" : "College football quarterbacks";
   headlines.cfbqb = "Quarterback";
   const noGameWindow = ["players", "live", "player", "cfb", "cfbteams", "cfbplayers", "cfbqb"].includes(state.view);
   document.getElementById("cfb-statbar").hidden = sportOf(state.view) !== "cfb" || state.view === "cfbqb";
@@ -3143,8 +3419,8 @@ const viewFromHash = () => {
   const h = location.hash.slice(1);
   const m = /^player-(\d+)$/.exec(h);
   if (m) { state.playerId = m[1]; return "player"; }
-  const q = /^cfbqb-(\d+)$/.exec(h);
-  if (q) { state.cfbqbId = q[1]; return "cfbqb"; }
+  const q = /^cfb(qb|rb)-(\d+)$/.exec(h);
+  if (q) { state.cqKind = q[1]; state.cfbqbId = q[2]; return "cfbqb"; }
   return VIEWS.includes(h) && h !== "player" && h !== "cfbqb" ? h : "stats";
 };
 document.getElementById("sport").addEventListener("change", e => {
@@ -3158,7 +3434,7 @@ function setView(v) {
   if (state.view === "player" && !state.playerId) state.view = "players";
   if (state.view === "cfbqb" && !state.cfbqbId) state.view = "cfbplayers";
   const hash = state.view === "stats" ? "" : state.view === "player" ? "#player-" + state.playerId
-    : state.view === "cfbqb" ? "#cfbqb-" + state.cfbqbId : "#" + state.view;
+    : state.view === "cfbqb" ? `#cfb${state.cqKind || "qb"}-` + state.cfbqbId : "#" + state.view;
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
   if (state.view === "player" && prev !== "player") { state.cameFromApp = prev != null; window.scrollTo(0, 0); }
   if (state.view === "cfbqb") { state.cqFromApp = prev != null && prev !== "cfbqb" ? true : state.cqFromApp; window.scrollTo(0, 0); }

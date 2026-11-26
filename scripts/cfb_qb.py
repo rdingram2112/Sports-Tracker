@@ -38,7 +38,11 @@ SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 def name_key(name):
     """('k', 'russell') from 'K.Russell', 'Keelon Russell' or 'Keelon Russell Jr.'"""
-    parts = [p for p in re.split(r"[\s.]+", plain(name).lower()) if p and p.strip("'-") and p not in SUFFIXES]
+    parts = [p for p in re.split(r"[\s.]+", plain(name).lower()) if p and p.strip("'-")]
+    while len(parts) > 2 and parts[-1] in SUFFIXES:  # "Jr.", "III" only at the end, never a first initial ("V.Rosa")
+        parts.pop()
+    if len(parts) == 2 and parts[-1] in SUFFIXES and len(parts[0]) > 1:
+        parts.pop()
     if not parts:
         return None
     return (parts[0][0], re.sub(r"[^a-z]", "", parts[-1]))

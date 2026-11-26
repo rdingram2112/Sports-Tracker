@@ -62,6 +62,15 @@ From CollegeFootballData.com play-by-play (garbage time excluded) the script als
 
 **Players** (`#cfbplayers`): tap a quarterback to open his page (`#cfbqb-<id>`): photo and bio, this season's box scores (CMP/ATT, yards, TD, INT, EPA/DB, CPOE, rushing) and career stats by season at every school, with EPA/DB. Careers come from ESPN and CollegeFootballData via `cfb_qb.build_careers` (`data/cfb/qbcareers.json`, refreshed weekly). Quarterbacks with YDS/G, TD, INT, EPA per dropback (sacks included, garbage time excluded) and CPOE, ranked among QBs with at least 15 attempts per team game, using the same Stats from filters (each team's last X games, conference games only). Built by `scripts/cfb_qb.py` from CollegeFootballData box scores and play-by-play; CPOE uses a completion model from every pass this season (depth, direction, down, distance, field position). Writes `data/cfb/qbs.json`, caching each week in `data/cfb/qbgames.json`.
 
+**Running backs** (Players → Position → RB): backs with at least 6 carries per team game in the period, with four column sets (pick with the second menu; on phones each set fits the screen):
+
+- **Rushing**: carries, YDS/G, yards per carry, TD
+- **Role**: carry share (of the team's runs), red-zone carries (inside the 20), goal-line carries (inside the 5), short-yardage conversion (3rd/4th and 2 or less)
+- **Efficiency**: EPA per rush, success rate, explosive rate (12+ yards), stuff rate (0 or fewer yards; fewer is better) and highlight yards per opportunity (yards beyond the first 4 on runs of 4+, a measure of what the back adds past the line)
+- **Receiving**: targets, catches, yards, TD, EPA per target
+
+Tap a back for his page (`#cfbrb-<id>`): bio, this season's box scores (rushing, EPA, success, catches/yards) and career stats by season with EPA per rush. Built by `scripts/cfb_rb.py` from CollegeFootballData box scores, rosters and play-by-play (garbage time excluded for the efficiency stats); writes `data/cfb/rbs.json`, caching each week in `data/cfb/rbgames.json`, with careers in `data/cfb/rbcareers.json` (refreshed weekly).
+
 EPA can be shown raw or **opponent-adjusted** (the default): `scripts/fetch_cfb.py` rates every offense and defense at once from per-game EPA (each game weighted by plays, home field included, ratings measured against an average FBS team), then stores each game's EPA adjusted for that opponent, so the page's period filters work on adjusted numbers too.
 
 Cards also show EPA (expected points added) per play, per dropback and per rush for offense and defense, from [CollegeFootballData.com](https://collegefootballdata.com) with garbage time excluded. It needs a free API key stored as the repository secret `CFBD_API_KEY` (Settings → Secrets and variables → Actions); without it the last saved EPA (`data/cfb/epa.json`) is kept.
