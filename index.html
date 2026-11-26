@@ -829,6 +829,37 @@ button.ct-opp:hover .full { text-decoration: underline; }
 .cfb-pbox th:first-child, .cfb-pbox td:first-child { text-align: left; }
 .cfb-pbox td:first-child { white-space: nowrap; }
 .gd-team .box-wrap + .box-wrap { margin-top: 2px; }
+.gd-tabs button { padding: 6px 10px; font-size: 13px; }
+.fl-wrap { display: grid; gap: 6px; }
+.fl-svg { width: 100%; height: auto; display: block; border-radius: 8px; }
+.fl-num { fill: #fff; fill-opacity: 0.8; font: 700 34px var(--font-display, sans-serif); }
+.fl-ez { fill: #fff; font: 800 44px var(--font-display, sans-serif); letter-spacing: 0.08em; }
+.fl-key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.fl-key i { display: inline-block; width: 14px; height: 4px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+.fl-key .k-los { background: #2f7bff; } .fl-key .k-fd { background: #ffd60a; } .fl-key .k-drive { background: var(--muted); height: 8px; opacity: 0.6; }
+.fl-sit { display: grid; gap: 3px; }
+.fl-sit b { display: flex; align-items: center; gap: 6px; font: 700 18px var(--font-display); }
+.fl-sit b .logo { width: 20px; height: 20px; }
+.fl-sit span { font-size: 13px; color: var(--muted); }
+.fl-sit .fl-last { color: var(--fg); }
+.fl-wp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.fl-wpbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.fl-wpbar i { display: block; height: 100%; }
+.drives { display: grid; gap: 6px; }
+.dr { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.dr summary { display: grid; grid-template-columns: 20px auto 1fr; grid-template-areas: "logo team res" ". desc desc"; align-items: center; gap: 2px 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.dr summary::-webkit-details-marker { display: none; }
+.dr summary .logo { grid-area: logo; width: 20px; height: 20px; }
+.dr summary b { grid-area: team; font-size: 14px; }
+.dr .dr-res { grid-area: res; justify-self: end; font-weight: 600; font-size: 13px; }
+.dr.dr-score .dr-res { color: var(--good-fg); }
+.dr .dr-desc { grid-area: desc; font-size: 12px; color: var(--muted); }
+.pl { list-style: none; margin: 0; padding: 0 10px 8px; display: grid; gap: 0; }
+.pl li { padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.pl .pl-meta { font-size: 11px; color: var(--muted); font-weight: 600; }
+.pl li.scoring .pl-text { font-weight: 600; }
+.pl .pl-score { font-size: 12px; color: var(--good-fg); font-weight: 700; }
+.gd-preview .cfb-card { box-shadow: none; }
 .leaders { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
 .leaders > div { padding: 8px 14px; display: grid; gap: 2px; font-size: 13px; min-width: 0; }
 .leaders > div + div { border-left: 1px solid var(--line); }
@@ -1299,6 +1330,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <div class="gd-head">
         <div class="gd-title" id="gd-title"></div>
         <div class="gd-actions">
+          <div class="seg gd-tabs" id="gd-tabs" role="group" aria-label="Game view" hidden><button type="button" data-gtab="game">Field</button><button type="button" data-gtab="box">Box score</button></div>
           <button type="button" class="gd-toggle" id="gd-toggle" aria-pressed="false">Show all stats</button>
           <button type="button" class="gd-close" id="gd-close" aria-label="Close box score">✕</button>
         </div>
@@ -2179,6 +2211,8 @@ function loadBox(gameId, quiet) {
 
 const dialog = document.getElementById("game-dialog");
 function openBox(gameId) {
+  document.getElementById("gd-tabs").hidden = true;
+  document.getElementById("gd-toggle").hidden = false;
   box.gameId = gameId;
   box.data = null;
   if (!dialog.open) dialog.showModal();
@@ -3916,7 +3950,7 @@ function renderCfbLive() {
         <tbody>${row(g.away, a < h)}${row(g.home, h < a)}</tbody>
       </table>
       ${sit}${leaders}
-      ${started ? `<div class="open-hint">Box score ›</div>` : ""}
+      <div class="open-hint">${g.state === "in" ? "Live field, plays & box score ›" : g.state === "post" ? "Box score & plays ›" : "Preview ›"}</div>
     </article>`;
   };
   // Live games first, then the rest grouped by day
@@ -3953,13 +3987,16 @@ function parseCfbBox(json) {
   const sides = Object.fromEntries((header.competitors || []).map(c => [c.homeAway, {
     id: String(c.team?.id || ""), abbr: c.team?.abbreviation || "", name: c.team?.location || c.team?.displayName || "",
     logo: cfb.data?.teams[String(c.team?.id)]?.logo || c.team?.logos?.[0]?.href || "", score: c.score, rank: c.rank && c.rank <= 25 ? c.rank : null,
+    color: c.team?.color || "", altColor: c.team?.alternateColor || "",
   }]));
   const teamStats = Object.fromEntries((json.boxscore?.teams || []).map(t => [String(t.team?.id),
     Object.fromEntries((t.statistics || []).map(x => [x.label, x.displayValue]))]));
   const players = Object.fromEntries((json.boxscore?.players || []).map(b => [String(b.team?.id),
     Object.fromEntries((b.statistics || []).map(cat => [cat.name, { labels: cat.labels || [], totals: cat.totals || [],
       athletes: (cat.athletes || []).map(a => ({ id: String(a.athlete?.id || ""), name: a.athlete?.displayName || "", short: a.athlete?.shortName || a.athlete?.displayName || "", stats: a.stats || [] })) }]))]));
-  return { cfb: true, state: st.state, detail: st.shortDetail || st.detail || "", start: header.date, sides, teamStats, players };
+  const wp = (json.winprobability || []).at(-1)?.homeWinPercentage;
+  return { cfb: true, id: String(header.id || ""), state: st.state, detail: st.shortDetail || st.detail || "", start: header.date, sides, teamStats, players,
+    drives: parseDrives(json, sides), winprob: wp == null ? null : wp };
 }
 
 // Which of our player pages an ESPN athlete id has, if any
@@ -3983,6 +4020,8 @@ function renderCfbBox(data) {
     : data.state === "pre" ? `<div class="gd-state">Kicks off ${new Date(data.start).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</div>`
       : `<div class="gd-state">${esc(data.detail || "Final")}</div>`;
   title.innerHTML = away && home ? `<div class="gd-score">${side(away, started && a < h)}<span class="dash">@</span>${side(home, started && h < a)}</div>${stateText}` : "Box score";
+  syncGdTabs(data);
+  if (box.tab === "game") { body.innerHTML = renderGameTab(data); return; }
   if (!started || !Object.keys(data.players).length) {
     body.innerHTML = `<div class="gd-msg">The box score appears once the game kicks off.</div>`;
     return;
@@ -4037,9 +4076,155 @@ function loadCfbBox(gameId, quiet) {
       document.getElementById("gd-body").innerHTML = `<div class="gd-msg">Couldn't load the box score from ESPN. Close this and try again in a moment.</div>`;
     });
 }
+// ---- Live field and play-by-play (football game popup) ----
+const spotYtg = (text, offenseAbbr) => {
+  // "CHI 6" -> yards to the end zone for the offense; "50" is midfield
+  const m = /^([A-Za-z&.]+)?\s*(\d{1,2})$/.exec(String(text || "").trim());
+  if (!m) return null;
+  const n = Number(m[2]);
+  if (!m[1] || n === 50) return 50;
+  return m[1].toUpperCase() === String(offenseAbbr || "").toUpperCase() ? 100 - n : n;
+};
+const playSpot = (pt, offenseAbbr) => pt?.yardsToEndzone != null && pt.yardsToEndzone >= 0 && pt.yardsToEndzone <= 100
+  ? pt.yardsToEndzone : spotYtg(pt?.possessionText, offenseAbbr);
+
+function parseDrives(json, sides) {
+  const abbrOf = id => id === sides.home?.id ? sides.home.abbr : id === sides.away?.id ? sides.away.abbr : "";
+  const list = [...(json.drives?.previous || [])];
+  const cur = json.drives?.current;
+  if (cur) { const i = list.findIndex(x => x.id === cur.id); if (i >= 0) list[i] = cur; else list.push(cur); }
+  return list.map(dr => {
+    const teamId = String(dr.team?.id || "");
+    const abbr = dr.team?.abbreviation || abbrOf(teamId);
+    return {
+      id: String(dr.id), teamId, abbr, result: dr.displayResult || dr.result || "", desc: dr.description || "",
+      startText: dr.start?.text || "", current: cur && dr.id === cur.id, score: !!dr.isScore,
+      plays: (dr.plays || []).map(p => ({
+        text: String(p.text || "").replace(/^\s*\(\d{1,2}:\d{2}\)\s*/, "").trim(), type: p.type?.text || "",
+        clock: p.clock?.displayValue || "", period: p.period?.number || null, scoring: !!p.scoringPlay,
+        dd: p.start?.downDistanceText || "", away: p.awayScore, home: p.homeScore,
+        start: { team: String(p.start?.team?.id || teamId), ytg: playSpot(p.start, abbrOf(String(p.start?.team?.id || teamId))), down: p.start?.down, dist: p.start?.distance },
+        end: { team: String(p.end?.team?.id || teamId), ytg: playSpot(p.end, abbrOf(String(p.end?.team?.id || teamId))), down: p.end?.down, dist: p.end?.distance, dd: p.end?.downDistanceText || "" },
+      })),
+    };
+  });
+}
+
+// A football field: away team's end zone on the left, home on the right.
+function fieldSvg(data, s) {
+  const { away, home } = data.sides;
+  const W = 1200, H = 300, X = yd => (10 + yd) * 10;
+  const col = (t, alt) => "#" + String((alt ? t.altColor : t.color) || "555").replace("#", "");
+  const lines = [];
+  for (let y = 5; y < 100; y += 5) lines.push(`<line x1="${X(y)}" y1="0" x2="${X(y)}" y2="${H}" stroke="#fff" stroke-opacity="${y % 10 ? 0.25 : 0.55}" stroke-width="${y === 50 ? 4 : 2}"/>`);
+  const nums = [];
+  for (let y = 10; y < 100; y += 10) {
+    const label = y <= 50 ? y : 100 - y;
+    nums.push(`<text x="${X(y)}" y="${H - 22}" text-anchor="middle" class="fl-num">${label}</text><text x="${X(y)}" y="46" text-anchor="middle" class="fl-num">${label}</text>`);
+  }
+  const ez = (t, left) => `<rect x="${left ? 0 : 1100}" y="0" width="100" height="${H}" fill="${col(t)}"/>
+    <text x="${left ? 50 : 1150}" y="${H / 2}" text-anchor="middle" dominant-baseline="central" transform="rotate(${left ? -90 : 90} ${left ? 50 : 1150} ${H / 2})" class="fl-ez">${esc(t.abbr)}</text>`;
+  let marks = "";
+  if (s) {
+    const homeBall = s.team === home.id;
+    const dir = homeBall ? -1 : 1;                       // away drives toward the right end zone
+    const bx = homeBall ? s.ytg : 100 - s.ytg;
+    const off = homeBall ? home : away;
+    if (s.driveYtg != null) {
+      const sx = homeBall ? s.driveYtg : 100 - s.driveYtg;
+      const a = Math.min(sx, bx), b = Math.max(sx, bx);
+      marks += `<rect x="${X(a)}" y="${H / 2 - 34}" width="${Math.max(4, (b - a) * 10)}" height="68" fill="${col(off)}" fill-opacity="0.45" rx="8"/>`;
+    }
+    marks += `<line x1="${X(bx)}" y1="0" x2="${X(bx)}" y2="${H}" stroke="#2f7bff" stroke-width="7"/>`;
+    if (s.dist && s.dist < s.ytg) marks += `<line x1="${X(bx + dir * s.dist)}" y1="0" x2="${X(bx + dir * s.dist)}" y2="${H}" stroke="#ffd60a" stroke-width="7"/>`;
+    const bxx = X(bx);
+    marks += `<ellipse cx="${bxx}" cy="${H / 2}" rx="26" ry="16" fill="#8a4b20" stroke="#fff" stroke-width="3"/>
+      <polygon points="${bxx + dir * 40},${H / 2 - 16} ${bxx + dir * 62},${H / 2} ${bxx + dir * 40},${H / 2 + 16}" fill="#fff"/>`;
+  }
+  return `<svg class="fl-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Field: ${s ? esc(s.label) : "no play in progress"}">
+    <rect width="${W}" height="${H}" fill="#2e7d32"/>
+    ${Array.from({ length: 10 }, (_, i) => i % 2 ? `<rect x="${X(i * 10)}" y="0" width="100" height="${H}" fill="#2a7330"/>` : "").join("")}
+    ${lines.join("")}${nums.join("")}${ez(away, true)}${ez(home, false)}
+    <line x1="${X(0)}" y1="0" x2="${X(0)}" y2="${H}" stroke="#fff" stroke-width="4"/><line x1="${X(100)}" y1="0" x2="${X(100)}" y2="${H}" stroke="#fff" stroke-width="4"/>
+    ${marks}
+  </svg>`;
+}
+
+function renderGameTab(data) {
+  const { away, home } = data.sides;
+  const mini = t => cfbLogo(t).replace(/width="34" height="34"/g, 'width="20" height="20"');
+  if (data.state === "pre") {
+    const g = cfb.data?.weeks.flatMap(w => w.games).find(x => x.id === data.id);
+    const preview = g && cfb.data ? cfbCard(g, cfbTeamStats(cfb.data.weeks.length)) : "";
+    return `<div class="gd-msg">Kicks off ${new Date(data.start).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. The live field and play-by-play start at kickoff.</div>${preview ? `<div class="gd-preview">${preview}</div>` : ""}`;
+  }
+  const drives = data.drives || [];
+  // Where things stand: the end of the latest play
+  let s = null, between = "";
+  const lastDrive = drives[drives.length - 1];
+  // Timeouts, quarter breaks and the like don't move the ball
+  const realPlays = (lastDrive?.plays || []).filter(p => !/timeout|end (of )?(period|quarter|half|game)|two-minute|end quarter/i.test(p.type + " " + p.text));
+  const lastPlay = realPlays[realPlays.length - 1];
+  if (data.state === "in" && lastPlay && !(lastPlay.end.dd && lastPlay.end.ytg > 0 && lastPlay.end.ytg < 100)) {
+    between = lastPlay.scoring ? `${lastDrive.abbr} ${lastPlay.type.toLowerCase()}` : "Change of possession";
+  } else if (data.state === "in" && lastPlay && lastPlay.end.ytg != null) {
+    const team = lastPlay.end.team;
+    const t = team === home.id ? home : away;
+    const sameDrive = team === lastDrive.teamId;
+    s = { team, ytg: lastPlay.end.ytg, dist: lastPlay.end.dist, label: `${t.abbr} ball · ${lastPlay.end.dd || ""}`,
+      driveYtg: sameDrive ? spotYtg(lastDrive.startText, t.abbr) : null, abbr: t.abbr };
+  }
+  const wp = data.winprob;
+  const wpBar = wp != null && data.state === "in" ? `<div class="fl-wp" aria-label="Win probability">
+      <span>${esc(away.abbr)} ${Math.round((1 - wp) * 100)}%</span>
+      <div class="fl-wpbar"><i style="width:${(1 - wp) * 100}%;background:#${String(away.color || "777").replace("#", "")}"></i><i style="width:${wp * 100}%;background:#${String(home.color || "999").replace("#", "")}"></i></div>
+      <span>${Math.round(wp * 100)}% ${esc(home.abbr)}</span></div>` : "";
+  const situation = s ? `<div class="fl-sit"><b>${mini(s.team === home.id ? home : away)}${esc(s.label)}</b>${lastDrive && s.team === lastDrive.teamId && lastDrive.desc ? `<span>This drive: ${esc(lastDrive.desc)}</span>` : ""}${lastPlay ? `<span class="fl-last">Last play: ${esc(lastPlay.text)}</span>` : ""}</div>`
+    : between ? `<div class="fl-sit"><b>${esc(between)}</b><span>Waiting for the next snap.</span>${lastPlay ? `<span class="fl-last">Last play: ${esc(lastPlay.text)}</span>` : ""}</div>`
+    : data.state === "post" ? `<div class="fl-sit"><b>Final</b></div>` : "";
+  const field = data.state === "in" ? `<div class="fl-wrap">${fieldSvg(data, s)}<div class="fl-key"><span><i class="k-los"></i>Line of scrimmage</span><span><i class="k-fd"></i>First down</span><span><i class="k-drive"></i>This drive</span></div></div>` : "";
+
+  const sideOf = id => id === home.id ? home : away;
+  const drivesHtml = drives.length ? [...drives].reverse().map((dr, i) => {
+    const t = sideOf(dr.teamId);
+    const open = box.openDrives ? box.openDrives.has(dr.id) : i === 0;
+    const res = dr.result || (dr.current && data.state === "in" ? "In progress" : "");
+    const plays = [...dr.plays].reverse().map(p => `<li class="${p.scoring ? "scoring" : ""}"><div class="pl-meta">${p.period ? `Q${p.period} ` : ""}${esc(p.clock)}${p.dd ? ` · ${esc(p.dd)}` : ""}</div><div class="pl-text">${esc(p.text)}</div>${p.scoring ? `<div class="pl-score">${esc(away.abbr)} ${p.away ?? ""} – ${esc(home.abbr)} ${p.home ?? ""}</div>` : ""}</li>`).join("");
+    return `<details class="dr${dr.score ? " dr-score" : ""}" data-drive="${esc(dr.id)}"${open ? " open" : ""}>
+      <summary>${mini(t)}<b>${esc(t.abbr)}</b><span class="dr-res">${esc(res)}</span><span class="dr-desc">${esc(dr.desc)}${dr.startText ? ` · from ${esc(dr.startText)}` : ""}</span></summary>
+      <ol class="pl">${plays || "<li>No plays yet.</li>"}</ol></details>`;
+  }).join("") : `<div class="gd-msg">No play-by-play yet.</div>`;
+  return `${field}${situation}${wpBar}<section class="gd-team"><h3>Play-by-play</h3><div class="drives">${drivesHtml}</div></section>`;
+}
+
+function syncGdTabs(data) {
+  const tabs = document.getElementById("gd-tabs");
+  tabs.hidden = false;
+  if (!box.tab) box.tab = data.state === "post" ? "box" : "game";
+  tabs.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.gtab === box.tab)));
+  tabs.querySelector('[data-gtab="game"]').textContent = data.state === "pre" ? "Preview" : data.state === "in" ? "Field" : "Plays";
+  document.getElementById("gd-toggle").hidden = box.tab === "game";
+}
+document.getElementById("gd-tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-gtab]");
+  if (!b || !box.data?.cfb) return;
+  box.tab = b.dataset.gtab;
+  renderCfbBox(box.data);
+  document.getElementById("gd-body").scrollTop = 0;
+});
+// Remember which drives are open across the 30-second refreshes
+document.getElementById("gd-body").addEventListener("toggle", e => {
+  const dr = e.target.closest?.("details[data-drive]");
+  if (!dr || !box.data?.cfb) return;
+  if (!box.openDrives) box.openDrives = new Set([...document.querySelectorAll("#gd-body details[data-drive][open]")].map(x => x.dataset.drive));
+  dr.open ? box.openDrives.add(dr.dataset.drive) : box.openDrives.delete(dr.dataset.drive);
+}, true);
+
 function openCfbBox(gameId) {
   box.gameId = gameId;
   box.data = null;
+  box.tab = null;
+  box.openDrives = null;
   if (!cfbq.data) loadCfbQbs();
   if (!cfbr.data) loadCfbRbs();
   if (!cfbw.data) loadCfbWrs();
