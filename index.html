@@ -571,6 +571,19 @@ tbody tr:hover td { background: var(--head-bg); }
 .cfbt .tteam .tn b { font-weight: 600; white-space: nowrap; }
 .cfbt .tteam .tn b .rk { color: var(--accent); font-size: 12px; margin-right: 3px; }
 .cfbt .tteam .tn span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cfbp .tteam .shot { width: 34px; height: 34px; flex: none; }
+.cfbp .tteam .tn span { display: flex; align-items: center; gap: 4px; }
+.cfbp .tteam .tn span .logo { width: 14px; height: 14px; }
+@media (max-width: 760px) {
+  .cfbp .tteam .shot { width: 26px; height: 26px; }
+  .cfbp .tteam .tn { max-width: 74px; }
+  .cfbp .tteam .tn b { white-space: normal; font-size: 13px; }
+  #cfbp-box tr > :nth-child(2) { display: none; }
+  #cfbp-box .pc { display: none; }
+  #cfbp-box td { font-size: 13px; }
+  #cfbp-box th, #cfbp-box td { padding-inline: 3px; }
+  #cfbp-box th button { font-size: 12px; letter-spacing: 0.02em; }
+}
 .cfbt th.on button { color: var(--accent); }
 .cfbt td.on { background: var(--edge-bg); font-weight: 600; }
 .cfbt .rk-good { color: var(--good-fg); font-weight: 600; }
@@ -1035,6 +1048,24 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     <span class="cfb-statnote" id="cfb-statnote"></span>
   </div>
 
+  <section id="view-cfbplayers" hidden>
+    <div class="cfb">
+      <div class="cfb-controls">
+        <label class="cfb-filter" for="cfbp-pos">
+          <span>Position</span>
+          <select id="cfbp-pos"><option value="QB">Quarterbacks</option></select>
+        </label>
+        <label class="cfb-filter" for="cfbp-conf">
+          <span>Show</span>
+          <select id="cfbp-conf"></select>
+        </label>
+      </div>
+      <div class="table-box" id="cfbp-box">
+        <table class="ptable cfbt cfbp"><thead><tr id="cfbp-head"></tr></thead><tbody id="cfbp-rows"></tbody></table>
+      </div>
+    </div>
+  </section>
+
   <section id="view-cfbteams" hidden>
     <div class="cfb">
       <div class="cfb-controls">
@@ -1196,11 +1227,11 @@ const state = {
   pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
   pexpanded: null, pchartStat: null,
 };
-const VIEWS = ["stats", "matchups", "players", "live", "player", "cfb", "cfbteams"];
+const VIEWS = ["stats", "matchups", "players", "live", "player", "cfb", "cfbteams", "cfbplayers"];
 // Views in the menu for each sport. College football has Matchups so far.
 const SPORT_VIEWS = {
   nba: [["stats", "Team stats"], ["matchups", "Matchups"], ["players", "Players"], ["live", "Live scores"]],
-  cfb: [["cfbteams", "Team stats"], ["cfb", "Matchups"]],
+  cfb: [["cfbteams", "Team stats"], ["cfb", "Matchups"], ["cfbplayers", "Players"]],
 };
 const sportOf = view => view.startsWith("cfb") ? "cfb" : "nba";
 const efgOf = t => t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null;
@@ -2717,6 +2748,124 @@ document.getElementById("cfbt-head").addEventListener("click", e => {
 });
 document.getElementById("cfbt-conf").addEventListener("change", e => { cfbt.conf = e.target.value; render(); });
 
+/* College football players: quarterbacks */
+const cfbq = { data: null, loading: false, error: false, sort: "epa", dir: "best", conf: "all" };
+const QB_STATS = [
+  { key: "ypg", label: "YDS/G", hint: "passing", higher: true, fmt: v => v.toFixed(1) },
+  { key: "td", label: "TD", hint: "passing", higher: true, fmt: v => String(v) },
+  { key: "int", label: "INT", hint: "thrown", higher: false, fmt: v => String(v) },
+  { key: "epa", label: "EPA/DB", hint: "per dropback", higher: true, fmt: v => { const r = Math.round(v * 100) / 100; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2); } },
+  { key: "cpoe", label: "CPOE", hint: "vs expected", higher: true, fmt: v => { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(1) + '<span class="pc">%</span>'; } },
+];
+
+function loadCfbQbs() {
+  if (cfbq.data || cfbq.loading) return;
+  cfbq.loading = true;
+  fetch("data/cfb/qbs.json", { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => {
+      const c = Object.fromEntries(d.cols.map((k, i) => [k, i]));
+      d.list = d.rows.map(r => Object.fromEntries(d.cols.map(k => [k, r[c[k]]])));
+      cfbq.data = d;
+    })
+    .catch(() => { cfbq.error = true; })
+    .finally(() => { cfbq.loading = false; if (state.view === "cfbplayers") render(); });
+}
+
+function renderCfbPlayers() {
+  const rowsEl = document.getElementById("cfbp-rows");
+  if (!cfb.data) loadCfb();
+  if (!cfbq.data) loadCfbQbs();
+  if (!cfb.data || !cfbq.data) {
+    rowsEl.innerHTML = `<tr><td colspan="7" class="ploading">${cfb.error || cfbq.error ? "Couldn't load the quarterback data." : "Loading quarterbacks…"}</td></tr>`;
+    return;
+  }
+  const d = cfb.data, q = cfbq.data;
+  document.getElementById("season").textContent = `College football · ${d.season} season`;
+  document.getElementById("updated").textContent = "Quarterbacks with at least 15 pass attempts per team game in the selected games.";
+  syncCfbStatBar();
+
+  // Each team's games in the window: its last X games (or all), optionally conference games only.
+  const teamGames = {};
+  for (const r of d.rows) {
+    if (cfb.confOnly && !r.conf) continue;
+    (teamGames[r.team] ||= []).push(r);
+  }
+  const window = {};
+  for (const [tid, list] of Object.entries(teamGames)) {
+    const games = cfb.span ? list.slice(-cfb.span) : list;
+    window[tid] = { weeks: new Set(games.map(g => g.week)), count: games.length };
+  }
+  const scope = [cfb.span ? `each team's last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
+  document.getElementById("cfb-statnote").textContent = `Stats use ${scope}. EPA per dropback includes sacks; scrambles aren't counted. CPOE compares completions with what an average passer completes on the same throws. These aren't opponent-adjusted.`;
+
+  // Sum each quarterback's games inside his team's window
+  const agg = {};
+  for (const g of q.list) {
+    const w = window[g.team];
+    if (!w || !w.weeks.has(g.week)) continue;
+    if (cfb.confOnly && !g.confGame) continue;
+    const a = (agg[g.player] ||= { team: g.team, gp: 0, comp: 0, att: 0, yds: 0, td: 0, int: 0, db: 0, epa: 0, cpAtt: 0, cpComp: 0, cpExp: 0 });
+    a.gp++;
+    for (const k of ["comp", "att", "yds", "td", "int", "db", "epa", "cpAtt", "cpComp", "cpExp"]) a[k] += g[k];
+    a.team = g.team; // most recent team
+  }
+  const qbs = Object.entries(agg)
+    .filter(([pid, a]) => d.conferences[d.teams[a.team]?.conf] && a.att >= 15 * (window[a.team]?.count || 0) && a.att > 0)
+    .map(([pid, a]) => ({
+      id: pid, ...a,
+      ypg: a.yds / a.gp,
+      epa: a.db ? a.epa / a.db : null,
+      cpoe: a.cpAtt ? (a.cpComp - a.cpExp) / a.cpAtt * 100 : null,
+    }));
+  // Ranks among qualified quarterbacks; ties share the better rank.
+  for (const st of QB_STATS) {
+    const vals = qbs.map(x => x[st.key]).filter(v => v != null);
+    for (const x of qbs) if (x[st.key] != null) x[st.key + "Rank"] = 1 + vals.filter(v => st.higher ? v > x[st.key] : v < x[st.key]).length;
+  }
+  const n = qbs.length;
+
+  const sel = document.getElementById("cfbp-conf");
+  const confs = Object.entries(d.conferences).sort((x, y) => x[1].short.localeCompare(y[1].short));
+  const opts = [["all", "All FBS"], ...confs.map(([id, c]) => [id, c.short])];
+  if (sel.options.length !== opts.length) sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  sel.value = cfbq.conf;
+  let list = cfbq.conf === "all" ? qbs : qbs.filter(x => d.teams[x.team]?.conf === cfbq.conf);
+  const k = cfbq.sort;
+  list.sort((a, b) => ((cfbq.dir === "best" ? 1 : -1) * ((a[k + "Rank"] ?? 999) - (b[k + "Rank"] ?? 999))) || a.id.localeCompare(b.id));
+
+  const arrow = key => cfbq.sort === key ? (cfbq.dir === "best" ? "▲" : "▼") : "";
+  document.getElementById("cfbp-head").innerHTML = `<th><span class="th-plain">Quarterback</span></th><th><span class="th-plain">GP</span></th>` +
+    QB_STATS.map(st => `<th class="${cfbq.sort === st.key ? "on" : ""}"><button type="button" data-qsort="${st.key}">${st.label} <span class="arrow">${arrow(st.key)}</span></button><small>${st.hint}</small></th>`).join("");
+  const band = Math.max(5, Math.round(n * 0.2));
+  rowsEl.innerHTML = list.map((x, i) => {
+    const p = q.players[x.id] || { name: x.id };
+    const t = d.teams[x.team] || {};
+    const shot = `<span class="shot" data-init="${initials(p.name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/college-football/players/full/${encodeURIComponent(x.id)}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="34" height="34"></span>`;
+    const cells = QB_STATS.map(st => {
+      const v = x[st.key], rr = x[st.key + "Rank"];
+      const cls = rr == null ? "" : rr <= band ? "rk-good" : rr > n - band ? "rk-bad" : "";
+      return `<td class="${cfbq.sort === st.key ? "on" : ""}"><span class="pv">${v == null ? "—" : st.fmt(v)}</span><span class="pp ${cls}">${rr ? ordinal(rr) : "&nbsp;"}</span></td>`;
+    }).join("");
+    return `<tr><td><div class="tteam"><span class="pos">${i + 1}</span>${shot}<div class="tn"><b>${esc(p.name)}</b><span>${cfbLogo({ ...t, id: x.team }).replace(/width="34" height="34"/g, 'width="14" height="14"')}${esc(t.abbr || "")} · ${(x.comp / x.att * 100).toFixed(1)}%</span></div></div></td>
+      <td class="dim">${x.gp}</td>${cells}</tr>`;
+  }).join("") || `<tr><td colspan="7" class="ploading">No qualified quarterbacks.</td></tr>`;
+}
+
+document.getElementById("cfbp-head").addEventListener("click", e => {
+  const b = e.target.closest("button[data-qsort]");
+  if (!b) return;
+  if (cfbq.sort === b.dataset.qsort) cfbq.dir = cfbq.dir === "best" ? "worst" : "best";
+  else { cfbq.sort = b.dataset.qsort; cfbq.dir = "best"; }
+  render();
+});
+document.getElementById("cfbp-conf").addEventListener("change", e => { cfbq.conf = e.target.value; render(); });
+document.getElementById("cfbp-rows").addEventListener("error", e => {
+  if (e.target.tagName !== "IMG" || !e.target.closest(".shot")) return;
+  e.target.parentNode.classList.add("noimg");
+  e.target.remove();
+}, true);
+
 // The "Stats from" bar is shared by Team stats and Matchups.
 function syncCfbStatBar() {
   document.querySelectorAll(".cfb-span button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.cspan) === cfb.span)));
@@ -2764,8 +2913,10 @@ function render() {
   headlines.player = "Player";
   headlines.cfb = "College football matchups";
   headlines.cfbteams = "College football team stats";
-  const noGameWindow = ["players", "live", "player", "cfb", "cfbteams"].includes(state.view);
+  headlines.cfbplayers = "College football quarterbacks";
+  const noGameWindow = ["players", "live", "player", "cfb", "cfbteams", "cfbplayers"].includes(state.view);
   document.getElementById("cfb-statbar").hidden = sportOf(state.view) !== "cfb";
+  document.querySelector(".cfb-adjwrap").hidden = state.view === "cfbplayers";
   // Sport menu and the views it offers
   const sport = sportOf(state.view);
   const sportSel = document.getElementById("sport");
@@ -2799,6 +2950,7 @@ function render() {
   else if (state.view === "player") renderPlayerPage();
   else if (state.view === "cfb") renderCfb();
   else if (state.view === "cfbteams") renderCfbTeams();
+  else if (state.view === "cfbplayers") renderCfbPlayers();
   else renderStats();
   updateFit();
 }

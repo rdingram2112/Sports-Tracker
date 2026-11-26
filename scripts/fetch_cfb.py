@@ -52,6 +52,8 @@ RATE_SPLITS = [("Succ", "N", 150), ("EarlyS", "EarlyN", 120), ("LateS", "LateN",
                ("PdS", "PdN", 80), ("Sacks", "Db", 120), ("Press", "Db", 120), ("Havoc", "N", 150)]
 ADJ_RATE_COLS = ["adjOff" + e for e, _, _ in RATE_SPLITS] + ["adjDef" + e for e, _, _ in RATE_SPLITS]
 PLAYS_CACHE = DIR / "playstats.json"
+QB_CACHE = DIR / "qbgames.json"
+QB_OUT = DIR / "qbs.json"
 EPA_COLS = ["offPlays", "offEpa", "offPassPlays", "offPassEpa", "offRushPlays", "offRushEpa",
             "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa"]
 
@@ -494,6 +496,15 @@ def main():
     col = {k: i for i, k in enumerate(RESULT_COLS + EPA_COLS + ADJ_COLS + PBP_COLS)}
     adjust_for_opponents(results, fbs, col, [("off" + e, "off" + n, sh) for e, n, sh in RATE_SPLITS])
     print(f"Play-by-play stats for {sum(1 for r in results if r[col['offN']] is not None)} of {len(results)} team-games")
+
+    # Quarterbacks for the Players view
+    import cfb_qb
+    results_meta = {(r[0], r[3]): (r[1], r[4], r[5]) for r in results}
+    try:
+        cfb_qb.build(first.get("season", {}).get("year"), out_weeks, games_by_id, teams, results_meta,
+                     os.environ.get("CFBD_API_KEY"), QB_CACHE, QB_OUT, cfbd_get, is_garbage_time, match_team, load)
+    except Exception as exc:
+        print(f"  quarterback stats failed: {exc}", file=sys.stderr)
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
