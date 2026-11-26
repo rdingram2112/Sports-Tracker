@@ -56,7 +56,7 @@ Pick **NFL** in the sport menu. It has the same views as college football (the s
 
 - **Team stats** (`#nflteams`): all 32 teams ranked across the league by points and yards, EPA per play/dropback/rush on offense and defense (raw or opponent-adjusted), success rates, and sack, pressure and havoc rates. Green is top 8, red bottom 8.
 - **Matchups** (`#nfl`): any week, with records, betting lines and both teams' stats side by side. Filter by division.
-- **Players** (`#nflplayers`): QBs (YDS/G, TD, INT, EPA/DB, CPOE), RBs (rushing, role, efficiency, receiving) and WRs/TEs (receiving, role with target share, air-yard share and aDOT, efficiency). Tap a player for his page: bio with college and draft, this season's box scores and career by season with EPA.
+- **Players** (`#nflplayers`): QBs (passing YDS, YDS/G, TD, INT, EPA/DB, CPOE), RBs (rushing with total yards; scrimmage: touches, scrimmage yards, per game, yards per touch and total TDs; role; efficiency; receiving) and WRs/TEs (receiving, role with target share, air-yard share and aDOT, efficiency). Tap a player for his page: bio with college and draft, this season's box scores and career by season with EPA.
 - **Team pages** (`#nflteam-<id>`), with record, division record and record against the spread, the overview, the schedule with lines and covers, and every player's stats.
 - **Live scores** (`#nfllive`), with possession, down and distance, leaders and box scores, refreshed every 30 seconds.
 
@@ -91,7 +91,8 @@ From CollegeFootballData.com play-by-play (garbage time excluded) the script als
 
 **Running backs** (Players → Position → RB): backs with at least 6 carries per team game in the period, with four column sets (pick with the second menu; on phones each set fits the screen):
 
-- **Rushing**: carries, YDS/G, yards per carry, TD
+- **Rushing**: carries, rushing yards, YDS/G, yards per carry, TD
+- **Scrimmage**: touches (carries + catches), scrimmage yards (rushing + receiving), scrimmage yards per game, yards per touch, total TDs
 - **Role**: carry share (of the team's runs), red-zone carries (inside the 20), goal-line carries (inside the 5), short-yardage conversion (3rd/4th and 2 or less)
 - **Efficiency**: EPA per rush, success rate, explosive rate (12+ yards), stuff rate (0 or fewer yards; fewer is better) and highlight yards per opportunity (yards beyond the first 4 on runs of 4+, a measure of what the back adds past the line)
 - **Receiving**: targets, catches, yards, TD, EPA per target
@@ -100,8 +101,8 @@ Tap a back for his page (`#cfbrb-<id>`): bio, this season's box scores (rushing,
 
 **Wide receivers and tight ends** (Players → Position → WR or TE, ranked separately): receivers with at least 3 targets per team game (tight ends 2), with three column sets:
 
-- **Receiving**: targets, catches, YDS/G, TD, 20+ yard catches
-- **Role**: target share, air-yard share, aDOT (average depth of target), red-zone targets
+- **Receiving**: targets, catches, receiving yards, YDS/G, TD
+- **Role**: target share, air-yard share, aDOT (average depth of target), red-zone targets, 20+ yard catches
 - **Efficiency**: catch rate, yards per target, yards after catch per catch, EPA per target, success rate per target
 
 College play-by-play has no air-yards field, so `scripts/cfb_wr.py` reads where each pass was caught or thrown from the play text ("caught at WSU45", "thrown to OhioSt30"), working out which team each abbreviation belongs to from the spots where plays ended. About 98% of targets get air yards. Tap a receiver for his page (`#cfbwr-<id>`): bio, this season's box scores (targets, catches, yards, TD, aDOT, YAC, EPA) and career stats with EPA per target. Writes `data/cfb/wrs.json` (weeks cached in `data/cfb/wrgames.json`) and `data/cfb/wrcareers.json`.

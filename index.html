@@ -2961,10 +2961,11 @@ document.getElementById("cfbt-conf").addEventListener("change", e => { cfbt.conf
 const newCfbq = () => ({ data: null, loading: false, error: false, sort: "epa", dir: "best", conf: "all", open: null, stat: "yds" });
 let cfbq = newCfbq();
 const QB_STATS = [
-  { key: "ypg", label: "YDS/G", hint: "passing", higher: true, fmt: v => v.toFixed(1) },
+  { key: "yds", label: "YDS", hint: "passing", higher: true, fmt: v => v.toLocaleString() },
+  { key: "ypg", label: "YDS/G", short: "Y/G", hint: "per game", higher: true, fmt: v => v.toFixed(1) },
   { key: "td", label: "TD", hint: "passing", higher: true, fmt: v => String(v) },
   { key: "int", label: "INT", hint: "thrown", higher: false, fmt: v => String(v) },
-  { key: "epa", label: "EPA/DB", hint: "per dropback", higher: true, fmt: v => { const r = Math.round(v * 100) / 100; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2); } },
+  { key: "epa", label: "EPA/DB", short: "EPA", hint: "per dropback", higher: true, fmt: v => { const r = Math.round(v * 100) / 100; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(2); } },
   { key: "cpoe", label: "CPOE", hint: "vs expected", higher: true, fmt: v => { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(1) + '<span class="pc">%</span>'; } },
 ];
 
@@ -2988,7 +2989,7 @@ function renderCfbPlayers() {
   document.getElementById("cfbp-pos").value = cfbpos.pos;
   document.getElementById("cfbp-group-wrap").hidden = cfbpos.pos === "QB";
   const groupSel = document.getElementById("cfbp-group");
-  const groups = cfbpos.pos === "RB" ? [["rush", "Rushing"], ["role", "Role"], ["eff", "Efficiency"], ["recv", "Receiving"]]
+  const groups = cfbpos.pos === "RB" ? [["rush", "Rushing"], ["scrim", "Scrimmage"], ["role", "Role"], ["eff", "Efficiency"], ["recv", "Receiving"]]
     : [["recv", "Receiving"], ["role", "Role"], ["eff", "Efficiency"]];
   if ([...groupSel.options].map(o => o.value).join() !== groups.map(g => g[0]).join())
     groupSel.innerHTML = groups.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
@@ -3058,7 +3059,7 @@ function renderCfbPlayers() {
 
   const arrow = key => cfbq.sort === key ? (cfbq.dir === "best" ? "▲" : "▼") : "";
   document.getElementById("cfbp-head").innerHTML = `<th><span class="th-plain">Quarterback</span></th><th><span class="th-plain">GP</span></th>` +
-    QB_STATS.map(st => `<th class="${cfbq.sort === st.key ? "on" : ""}"><button type="button" data-qsort="${st.key}">${st.label} <span class="arrow">${arrow(st.key)}</span></button><small>${st.hint}</small></th>`).join("");
+    QB_STATS.map(st => `<th class="${cfbq.sort === st.key ? "on" : ""}"><button type="button" data-qsort="${st.key}">${st.short ? `<span class="lf">${st.label}</span><span class="ls">${st.short}</span>` : st.label} <span class="arrow">${arrow(st.key)}</span></button><small>${st.hint}</small></th>`).join("");
   const band = Math.max(5, Math.round(n * 0.2));
   rowsEl.innerHTML = list.map((x, i) => {
     const p = q.players[x.id] || { name: x.id };
@@ -3211,15 +3212,21 @@ document.getElementById("cfbp-head").addEventListener("click", e => {
 document.getElementById("cfbp-conf").addEventListener("change", e => { cfbq.conf = e.target.value; render(); });
 /* College football running backs */
 const newCfbr = () => ({ data: null, loading: false, error: false, sort: "ypg", dir: "best",
-  group: ["rush", "role", "eff", "recv"].includes(load("st.cfbRbGroup", "rush")) ? load("st.cfbRbGroup", "rush") : "rush",
+  group: ["rush", "scrim", "role", "eff", "recv"].includes(load("st.cfbRbGroup", "rush")) ? load("st.cfbRbGroup", "rush") : "rush",
   careers: null, careersLoading: false });
 let cfbr = newCfbr();
 const pctFmt = v => v.toFixed(1) + '<span class="pc">%</span>';
 const RB_STATS = [
   { key: "car", g: "rush", label: "CAR", hint: "carries", higher: true, fmt: v => String(v) },
-  { key: "ypg", g: "rush", label: "YDS/G", hint: "rushing", higher: true, fmt: v => v.toFixed(1) },
+  { key: "ryds", g: "rush", label: "YDS", hint: "rushing", higher: true, fmt: v => v.toLocaleString() },
+  { key: "ypg", g: "rush", label: "YDS/G", hint: "per game", higher: true, fmt: v => v.toFixed(1) },
   { key: "ypc", g: "rush", label: "YPC", hint: "per carry", higher: true, fmt: v => v.toFixed(1) },
   { key: "rtd", g: "rush", label: "TD", hint: "rushing", higher: true, fmt: v => String(v) },
+  { key: "touches", g: "scrim", label: "TOUCH", hint: "car + rec", higher: true, fmt: v => String(v) },
+  { key: "scrYds", g: "scrim", label: "SCRM YDS", short: "YDS", hint: "rush + rec", higher: true, fmt: v => v.toLocaleString() },
+  { key: "scrPg", g: "scrim", label: "SCRM/G", short: "YDS/G", hint: "per game", higher: true, fmt: v => v.toFixed(1) },
+  { key: "ypt", g: "scrim", label: "YDS/TCH", short: "Y/TCH", hint: "per touch", higher: true, fmt: v => v.toFixed(1) },
+  { key: "totTd", g: "scrim", label: "TD", hint: "rush + rec", higher: true, fmt: v => String(v) },
   { key: "share", g: "role", label: "CARRY %", hint: "of team runs", higher: true, fmt: pctFmt },
   { key: "rz", g: "role", label: "RZ CAR", hint: "inside 20", higher: true, fmt: v => String(v) },
   { key: "gl", g: "role", label: "GL CAR", hint: "inside 5", higher: true, fmt: v => String(v) },
@@ -3309,6 +3316,8 @@ function renderCfbRbs() {
         hl: a.hlOpp ? a.hl / a.hlOpp : null,
       } : { epa: null, succ: null, expl: null, stuff: null, hl: null }),
       tgtEpa: a.tgtN >= 8 ? a.tgtEpa / a.tgtN : null,
+      touches: a.car + a.rec, scrYds: a.ryds + a.recYds, scrPg: (a.ryds + a.recYds) / a.gp,
+      ypt: a.car + a.rec ? (a.ryds + a.recYds) / (a.car + a.rec) : null, totTd: a.rtd + a.recTd,
     }));
   for (const st of RB_STATS) {
     const vals = rbs.map(x => x[st.key]).filter(v => v != null);
@@ -3321,7 +3330,7 @@ function renderCfbRbs() {
   if (sel.options.length !== opts.length) sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   sel.value = cfbq.conf;
   const stats = RB_STATS.filter(st => st.g === cfbr.group);
-  if (!stats.some(st => st.key === cfbr.sort)) { cfbr.sort = stats[0].key === "car" ? "ypg" : stats[0].key; cfbr.dir = "best"; }
+  if (!stats.some(st => st.key === cfbr.sort)) { cfbr.sort = { rush: "ypg", scrim: "scrPg", role: "share", eff: "epa", recv: "recYds" }[cfbr.group] || stats[0].key; cfbr.dir = "best"; }
   let list = cfbq.conf === "all" ? rbs : rbs.filter(x => d.teams[x.team]?.conf === cfbq.conf);
   const k = cfbr.sort;
   list.sort((a, b) => ((cfbr.dir === "best" ? 1 : -1) * ((a[k + "Rank"] ?? 999) - (b[k + "Rank"] ?? 999))) || a.id.localeCompare(b.id));
@@ -3454,13 +3463,14 @@ let cfbw = newCfbw();
 const WR_STATS = [
   { key: "tgt", g: "recv", label: "TGT", hint: "targets", higher: true, fmt: v => String(v) },
   { key: "rec", g: "recv", label: "REC", hint: "catches", higher: true, fmt: v => String(v) },
-  { key: "ypg", g: "recv", label: "YDS/G", hint: "receiving", higher: true, fmt: v => v.toFixed(1) },
+  { key: "recYds", g: "recv", label: "YDS", hint: "receiving", higher: true, fmt: v => v.toLocaleString() },
+  { key: "ypg", g: "recv", label: "YDS/G", hint: "per game", higher: true, fmt: v => v.toFixed(1) },
   { key: "recTd", g: "recv", label: "TD", hint: "receiving", higher: true, fmt: v => String(v) },
-  { key: "expl", g: "recv", label: "20+", hint: "catches", higher: true, fmt: v => String(v) },
   { key: "tgtShare", g: "role", label: "TGT %", hint: "of team", higher: true, fmt: pctFmt },
   { key: "airShare", g: "role", label: "AIR %", hint: "of team", higher: true, fmt: pctFmt },
   { key: "adot", g: "role", label: "aDOT", hint: "depth", higher: true, fmt: v => v.toFixed(1) },
   { key: "rz", g: "role", label: "RZ TGT", hint: "inside 20", higher: true, fmt: v => String(v) },
+  { key: "expl", g: "role", label: "20+", hint: "catches", higher: true, fmt: v => String(v) },
   { key: "catchPct", g: "eff", label: "CATCH %", short: "CATCH", hint: "of targets", higher: true, fmt: pctFmt },
   { key: "ypt", g: "eff", label: "YDS/TGT", short: "Y/TGT", hint: "per target", higher: true, fmt: v => v.toFixed(1) },
   { key: "yacPer", g: "eff", label: "YAC", hint: "per catch", higher: true, fmt: v => v.toFixed(1) },
