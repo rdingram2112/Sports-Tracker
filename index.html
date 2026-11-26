@@ -547,6 +547,7 @@ tbody tr:hover td { background: var(--head-bg); }
 .cfb-check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
 .cfb-check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .cfb-statnote { color: var(--muted); font-size: 13px; flex-basis: 100%; }
+.cfb-adjwrap { display: inline-flex; align-items: center; gap: 10px; }
 .cfb-team.won .nm b, .cfb-team.won .sc { color: var(--fg); }
 .cfb-day { display: grid; gap: 10px; }
 .cfb-day h2 { margin: 0; font: 700 20px var(--font-display); }
@@ -1016,6 +1017,13 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       games
     </label>
     <label class="cfb-check" for="cfb-conf"><input type="checkbox" id="cfb-conf"> Conference games only</label>
+    <div class="cfb-adjwrap">
+      <span class="label">EPA</span>
+      <div class="seg cfb-adj" role="group" aria-label="EPA adjustment">
+        <button type="button" data-adj="0">Raw</button>
+        <button type="button" data-adj="1">Opponent-adjusted</button>
+      </div>
+    </div>
     <span class="cfb-statnote" id="cfb-statnote"></span>
   </div>
 
@@ -1111,6 +1119,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
 
   <div class="notes" id="notes-cfb" hidden>
     <p>Rankings are ESPN's for each game: the College Football Playoff rankings once they're released, and the AP Top 25 before that, so past weeks show each team's ranking at the time. Top 25 shows games with at least one ranked team; a conference shows games involving any of its teams. Records, rankings and betting lines (spread, over/under and moneyline, usually DraftKings via ESPN) are refreshed each morning and mid-afternoon Eastern, so they're snapshots, not live odds.</p>
+    <p>Opponent-adjusted EPA judges each game against the strength of that opponent: a team's offensive EPA in a game is compared with what that opponent's defense usually allows (and its defense with what the opponent's offense usually gains), with home field accounted for. Opponent strength is measured from every game played so far, then your "Stats from" choice picks which of a team's games count, so you can see adjusted numbers for the last few games or conference play. Numbers are on the same scale as raw EPA: what the team did against an average FBS opponent.</p>
     <p>Team stats lists every FBS team with each stat's national rank underneath (green: top 25, red: bottom 25). Points &amp; yards shows points and total yards gained and allowed per game; EPA offense and EPA defense show expected points added per play, per dropback and per rush, gained and allowed. "Stats from" applies to both Team stats and Matchups.</p>
     <p>On Matchups, team stats are per game: PTS/G and OPP/G (points scored and allowed) and YDS/G and OPP YDS (total yards gained and allowed), with each team's rank among FBS teams. They count completed games before the selected week (or all games so far for future weeks), limited by "Stats from": the whole season or each team's last 3 or 5 games, and optionally conference games only. The shaded side is better. EPA (expected points added) comes from CollegeFootballData.com with garbage time excluded: OFF is the team's offense and DEF what its defense allows (lower is better), per play, per dropback (DB: passes and sacks) and per rush. QB scrambles can't be separated from designed runs in public play-by-play, so they count as rushes. Past games show the last betting line saved before kickoff when one was captured; ESPN removes lines once games start. Kickoff times are in your local time zone.</p>
   </div>
@@ -2321,6 +2330,7 @@ const cfb = {
   filter: load("st.cfbFilter", "top25"),        // all | top25 | conference id
   span: Number.isInteger(load("st.cfbSpan", 0)) && load("st.cfbSpan", 0) >= 0 && load("st.cfbSpan", 0) <= 16 ? load("st.cfbSpan", 0) : 0,
   confOnly: load("st.cfbConf", false) === true,
+  adj: load("st.cfbAdj", true) === true,          // opponent-adjusted EPA
 };
 
 function loadCfb() {
@@ -2331,7 +2341,8 @@ function loadCfb() {
     .then(d => {
       const c = Object.fromEntries(d.resultCols.map((k, i) => [k, i]));
       const epaKeys = ["offPlays", "offEpa", "offPassPlays", "offPassEpa", "offRushPlays", "offRushEpa",
-        "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa"];
+        "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa",
+        "adjOffEpa", "adjOffPassEpa", "adjOffRushEpa", "adjDefEpa", "adjDefPassEpa", "adjDefRushEpa"];
       d.rows = d.results.map(r => {
         const row = { week: r[c.week], team: r[c.team], conf: r[c.confGame] === 1, pf: r[c.pf], pa: r[c.pa], yds: r[c.yds], oyds: r[c.oppYds] };
         for (const k of epaKeys) row[k] = c[k] != null ? r[c[k]] : null;
@@ -2358,12 +2369,12 @@ const CFB_STATS = [
   { key: "oppg", label: "OPP/G", higher: false },
   { key: "ypg", label: "YDS/G", higher: true },
   { key: "oypg", label: "OPP YDS/G", short: "OPP YDS", higher: false },
-  { key: "oEpa", label: "OFF / PLAY", higher: true, epa: true, plays: "offPlays", total: "offEpa" },
-  { key: "oPass", label: "OFF / DB", higher: true, epa: true, plays: "offPassPlays", total: "offPassEpa" },
-  { key: "oRush", label: "OFF / RUSH", higher: true, epa: true, plays: "offRushPlays", total: "offRushEpa" },
-  { key: "dEpa", label: "DEF / PLAY", higher: false, epa: true, plays: "defPlays", total: "defEpa" },
-  { key: "dPass", label: "DEF / DB", higher: false, epa: true, plays: "defPassPlays", total: "defPassEpa" },
-  { key: "dRush", label: "DEF / RUSH", higher: false, epa: true, plays: "defRushPlays", total: "defRushEpa" },
+  { key: "oEpa", label: "OFF / PLAY", higher: true, epa: true, plays: "offPlays", total: "offEpa", adjTotal: "adjOffEpa" },
+  { key: "oPass", label: "OFF / DB", higher: true, epa: true, plays: "offPassPlays", total: "offPassEpa", adjTotal: "adjOffPassEpa" },
+  { key: "oRush", label: "OFF / RUSH", higher: true, epa: true, plays: "offRushPlays", total: "offRushEpa", adjTotal: "adjOffRushEpa" },
+  { key: "dEpa", label: "DEF / PLAY", higher: false, epa: true, plays: "defPlays", total: "defEpa", adjTotal: "adjDefEpa" },
+  { key: "dPass", label: "DEF / DB", higher: false, epa: true, plays: "defPassPlays", total: "defPassEpa", adjTotal: "adjDefPassEpa" },
+  { key: "dRush", label: "DEF / RUSH", higher: false, epa: true, plays: "defRushPlays", total: "defRushEpa", adjTotal: "adjDefRushEpa" },
 ];
 function cfbTeamStats(weekIdx) {
   const d = cfb.data;
@@ -2390,7 +2401,7 @@ function cfbTeamStats(weekIdx) {
     const withEpa = games.filter(g => g.offPlays != null);
     for (const st of CFB_STATS.filter(x => x.epa)) {
       const plays = sum(withEpa, st.plays);
-      stats[id][st.key] = plays ? sum(withEpa, st.total) / plays : null;
+      stats[id][st.key] = plays ? sum(withEpa, cfb.adj && st.adjTotal ? st.adjTotal : st.total) / plays : null;
     }
   }
   // National ranks among FBS teams; ties share the better rank.
@@ -2461,7 +2472,7 @@ function cfbCard(g, ts) {
   // Column header so it's clear which side is which team
   const miniLogo = t => cfbLogo(t).replace(/width="34" height="34"/g, 'width="20" height="20"');
   const head = `<div class="mrow mhead"><div class="val away">${miniLogo(A)}<b>${esc(A.abbr || A.name)}</b></div><div class="stat">Per game</div><div class="val home"><b>${esc(Hm.abbr || Hm.name)}</b>${miniLogo(Hm)}</div></div>`;
-  const epaHead = `<div class="mrow msub"><div class="val away"></div><div class="stat">EPA</div><div class="val home"></div></div>`;
+  const epaHead = `<div class="mrow msub"><div class="val away"></div><div class="stat">${cfb.adj ? "ADJ. EPA" : "EPA"}</div><div class="val home"></div></div>`;
   const epaRows = CFB_STATS.filter(st => st.epa).map(statRow).join("");
   const stats = sa && sh ? head + CFB_STATS.filter(st => !st.epa).map(statRow).join("") + (epaRows ? epaHead + epaRows : "") + `<div class="mrow gp"><div class="val away">${sa.gp} games</div><div class="stat">GP</div><div class="val home">${sh.gp} games</div></div>` : "";
 
@@ -2512,7 +2523,7 @@ function renderCfb() {
   const scope = [cfb.span ? `last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
   document.getElementById("cfb-statnote").textContent = wi === 0
     ? "Stats start after week 1."
-    : `Team stats use ${scope} ${wi > d.current ? "played so far" : `before ${week.label}`}. Ranks are among all ${ts.total} FBS teams.`;
+    : `Team stats use ${scope} ${wi > d.current ? "played so far" : `before ${week.label}`}${cfb.adj ? "; EPA is adjusted for each opponent's strength" : ""}. Ranks are among all ${ts.total} FBS teams.`;
 
   const games = (week?.games || []).filter(cfbFilterMatches);
   if (!games.length) {
@@ -2569,7 +2580,7 @@ function renderCfbTeams() {
 
   const ts = cfbTeamStats(d.weeks.length); // every completed game so far
   const scope = [cfb.span ? `each team's last ${cfb.span} games` : "all games", cfb.confOnly ? "conference games only" : ""].filter(Boolean).join(", ");
-  document.getElementById("cfb-statnote").textContent = `Stats use ${scope} played so far. Ranks are among all ${ts.total} FBS teams; tap a column to sort.`;
+  document.getElementById("cfb-statnote").textContent = `Stats use ${scope} played so far${cfb.adj ? "; EPA is adjusted for each opponent's strength" : ""}. Ranks are among all ${ts.total} FBS teams; tap a column to sort.`;
 
   // Conference menu
   const sel = document.getElementById("cfbt-conf");
@@ -2599,7 +2610,7 @@ function renderCfbTeams() {
   const arrow = key => cfbt.sort === key ? (cfbt.dir === "best" ? "▲" : "▼") : "";
   document.getElementById("cfbt-head").innerHTML =
     `<th><span class="th-plain">Team</span></th><th><span class="th-plain">GP</span></th>` +
-    keys.map(key => `<th class="${cfbt.sort === key ? "on" : ""}"><button type="button" data-tsort="${key}">${CFBT_LABELS[key][0]} <span class="arrow">${arrow(key)}</span></button><small>${CFBT_LABELS[key][1]}</small></th>`).join("");
+    keys.map(key => `<th class="${cfbt.sort === key ? "on" : ""}"><button type="button" data-tsort="${key}">${CFBT_LABELS[key][0]} <span class="arrow">${arrow(key)}</span></button><small>${CFBT_LABELS[key][1]}${cfb.adj && cfbt.group !== "basic" ? " · adj." : ""}</small></th>`).join("");
 
   const n = ts.total;
   const fmt = (st, v) => {
@@ -2644,7 +2655,15 @@ function syncCfbStatBar() {
   if (![0, 3, 5].includes(cfb.span)) x.value = cfb.span;
   else if (document.activeElement !== x) x.value = "";
   document.getElementById("cfb-conf").checked = cfb.confOnly;
+  document.querySelectorAll(".cfb-adj button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.adj === "1") === cfb.adj)));
 }
+document.querySelector(".cfb-adj").addEventListener("click", e => {
+  const b = e.target.closest("button[data-adj]");
+  if (!b) return;
+  cfb.adj = b.dataset.adj === "1";
+  save("st.cfbAdj", cfb.adj);
+  render();
+});
 document.getElementById("cfb-x").addEventListener("input", e => {
   const n = Math.floor(Number(e.target.value));
   if (n >= 1 && n <= 16) { cfb.span = n; save("st.cfbSpan", n); render(); }

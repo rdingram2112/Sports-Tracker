@@ -39,6 +39,9 @@ FBS = 80
 CFBD = "https://api.collegefootballdata.com"
 EPA_OUT = DIR / "epa.json"
 # Per team-game EPA columns: total EPA and play counts, offense then defense.
+RESULT_COLS = ["gameId", "week", "date", "team", "opp", "confGame", "pf", "pa", "yds", "oppYds", "site"]
+# Opponent-adjusted total EPA for each team-game (divide by the matching play count for per-play).
+ADJ_COLS = ["adjOffEpa", "adjOffPassEpa", "adjOffRushEpa", "adjDefEpa", "adjDefPassEpa", "adjDefRushEpa"]
 EPA_COLS = ["offPlays", "offEpa", "offPassPlays", "offPassEpa", "offRushPlays", "offRushEpa",
             "defPlays", "defEpa", "defPassPlays", "defPassEpa", "defRushPlays", "defRushEpa"]
 
@@ -103,6 +106,84 @@ def calendar_weeks(scoreboard):
             weeks.append({"stype": int(stype), "week": int(e["value"]), "label": e.get("label") or e.get("alternateLabel"),
                           "dates": e.get("detail", ""), "start": e.get("startDate"), "end": e.get("endDate")})
     return weeks
+
+
+def fit_ratings(games, shrink, rounds=200):
+    """Rate every offense and defense at once from per-game EPA per play.
+
+    Each game says: offense EPA/play = league average + offense rating + opponent defense rating
+    + home field. Ratings are solved by repeated weighted averaging (each game counts by its plays),
+    shrunk toward zero by `shrink` plays so teams with few games (mostly FCS) don't swing wildly.
+    games: list of (offense team, defense team, site, epa_per_play, plays); site is +1 home, -1 away, 0 neutral.
+    Returns (avg, off, defn, hfa).
+    """
+    games = [g for g in games if g[4] > 0]
+    total = sum(g[4] for g in games)
+    avg = sum(g[3] * g[4] for g in games) / total
+    off, defn, hfa = {}, {}, 0.0
+    by_off, by_def = {}, {}
+    for g in games:
+        by_off.setdefault(g[0], []).append(g)
+        by_def.setdefault(g[1], []).append(g)
+    for _ in range(rounds):
+        for t, gs in by_off.items():
+            off[t] = sum((y - avg - defn.get(d, 0) - hfa * site) * w for _, d, site, y, w in gs) / (sum(w for *_, w in gs) + shrink)
+        for t, gs in by_def.items():
+            defn[t] = sum((y - avg - off.get(o, 0) - hfa * site) * w for o, _, site, y, w in gs) / (sum(w for *_, w in gs) + shrink)
+        home = [g for g in games if g[2]]
+        if home:
+            hfa = sum((y - avg - off.get(o, 0) - defn.get(d, 0)) * site * w for o, d, site, y, w in home) / sum(w for *_, w in home)
+    return avg, off, defn, hfa
+
+
+def adjust_for_opponents(results, fbs):
+    """Add opponent-adjusted EPA to each team-game row (ADJ_COLS), in place.
+
+    A game's adjusted offense = its EPA/play minus how much its opponent's defense usually gives up
+    (relative to average) minus home field; adjusted defense works the same way against the opponent's
+    offense. Opponent strength comes from every game so far; the page then picks which games count.
+    Ratings are measured against the average FBS team, so an adjusted number reads as
+    "what this team did, against an average FBS opponent".
+    """
+    col = {k: i for i, k in enumerate(RESULT_COLS + EPA_COLS)}
+    splits = [("offEpa", "offPlays", 250), ("offPassEpa", "offPassPlays", 120), ("offRushEpa", "offRushPlays", 120)]
+    fits = {}
+    for total_key, plays_key, shrink in splits:
+        games = []
+        for r in results:
+            plays, total = r[col[plays_key]], r[col[total_key]]
+            if plays:
+                games.append((r[col["team"]], r[col["opp"]], r[col["site"]], total / plays, plays))
+        fit = fit_ratings(games, shrink) if games else None
+        if fit:
+            avg, off, defn, hfa = fit
+            fo = [off[t] for t in off if t in fbs]
+            fd = [defn[t] for t in defn if t in fbs]
+            mo, md = (sum(fo) / len(fo) if fo else 0), (sum(fd) / len(fd) if fd else 0)
+            fit = (avg + mo + md, {t: v - mo for t, v in off.items()}, {t: v - md for t, v in defn.items()}, hfa)
+        fits[total_key] = fit
+    for r in results:
+        adj = []
+        for side in ("off", "def"):
+            for (total_key, plays_key, _) in splits:
+                fit = fits[total_key]
+                tk = total_key.replace("off", side, 1)
+                pk = plays_key.replace("off", side, 1)
+                plays, total = r[col[pk]], r[col[tk]]
+                if not fit or not plays:
+                    adj.append(None)
+                    continue
+                avg, off, defn, hfa = fit
+                me, opp, site = r[col["team"]], r[col["opp"]], r[col["site"]]
+                if side == "off":   # my offense vs their defense; I'm at `site`
+                    per_play = total / plays - defn.get(opp, 0) - hfa * site
+                else:               # their offense vs my defense; they're at -site
+                    per_play = total / plays - off.get(opp, 0) - hfa * -site
+                adj.append(round(per_play * plays, 2))
+        r.extend(adj)
+    a = fits.get("offEpa")
+    if a:
+        print(f"Opponent adjustment: league average {a[0]:+.3f} EPA/play, home field {a[3]:+.3f}")
 
 
 def norm_name(name):
@@ -247,9 +328,10 @@ def main():
                 except (TypeError, ValueError):
                     continue
                 conf_game = 1 if comp.get("conferenceCompetition") else 0
-                for me, opp, pf, pa in ((a, h, ap, hp), (h, a, hp, ap)):
+                neutral = bool(comp.get("neutralSite"))
+                for me, opp, pf, pa, site in ((a, h, ap, hp, -1), (h, a, hp, ap, 1)):
                     results.append([ev["id"], wi, ev["date"], me["id"], opp["id"], conf_game, pf, pa,
-                                    yards.get(me["id"]), yards.get(opp["id"])])
+                                    yards.get(me["id"]), yards.get(opp["id"]), 0 if neutral else site])
         games.sort(key=lambda g: (g["start"], g["id"]))
         out_weeks.append({**{k: w[k] for k in ("label", "dates", "stype", "week", "start", "end")}, "games": games})
         print(f"{w['label']}: {len(games)} games")
@@ -276,6 +358,7 @@ def main():
         EPA_OUT.write_text(json.dumps(epa, separators=(",", ":"), sort_keys=True))
     for r in results:
         r.extend(epa.get(f"{r[0]}|{r[3]}") or [None] * len(EPA_COLS))
+    adjust_for_opponents(results, {t for t, v in teams.items() if v["conf"] in confs})
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
@@ -288,7 +371,7 @@ def main():
         "conferences": confs,
         "teams": dict(sorted(teams.items())),
         "weeks": out_weeks,
-        "resultCols": ["gameId", "week", "date", "team", "opp", "confGame", "pf", "pa", "yds", "oppYds"] + EPA_COLS,
+        "resultCols": RESULT_COLS + EPA_COLS + ADJ_COLS,
         "results": results,
     }, separators=(",", ":")))
     print(f"Saved {OUT}: {len(out_weeks)} weeks, {len(results) // 2} completed games "
