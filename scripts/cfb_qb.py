@@ -260,3 +260,99 @@ def build(year, weeks, games_by_id, teams, results_meta, key, cache_path, out_pa
                                     "leagueCompletion": round(overall, 4)}, separators=(",", ":")))
     print(f"Saved {len(rows)} quarterback-games for {len(players)} passers "
           f"({matched} with play-by-play; league completion rate {overall:.1%})")
+
+
+ESPN_ATHLETE = "https://site.api.espn.com/apis/common/v3/sports/football/college-football/athletes"
+CAREER_REFRESH_DAYS = 7
+CAREER_MAX_PER_RUN = 400
+MIN_ATTEMPTS_FOR_PAGE = 30  # quarterbacks with at least this many attempts this season get a page
+FIRST_EPA_SEASON = 2014
+
+
+def build_careers(year, key, qbs_path, cache_path, out_path, get_json, cfbd_get, load):
+    """Bio and season-by-season career lines for quarterbacks with real playing time this season.
+
+    Bio and career passing/rushing come from ESPN (all schools, so transfers show up). EPA per pass
+    play for past seasons comes from CollegeFootballData (garbage time excluded); this season's EPA per
+    dropback comes from our own play-by-play. Each player is fetched once and refreshed weekly.
+    """
+    from datetime import date
+    q = json.loads(qbs_path.read_text())
+    c = {k: i for i, k in enumerate(q["cols"])}
+    att = {}
+    for r in q["rows"]:
+        att[r[c["player"]]] = att.get(r[c["player"]], 0) + r[c["att"]]
+    wanted = [pid for pid, a in att.items() if a >= MIN_ATTEMPTS_FOR_PAGE]
+
+    cache = load(cache_path, {"players": {}, "epaSeasons": {}})
+    today = date.today()
+    due = [pid for pid in wanted
+           if pid not in cache["players"]
+           or (today - date.fromisoformat(cache["players"][pid].get("fetched", "2000-01-01"))).days > CAREER_REFRESH_DAYS]
+    for pid in due[:CAREER_MAX_PER_RUN]:
+        try:
+            a = get_json(f"{ESPN_ATHLETE}/{pid}").get("athlete", {})
+            st = get_json(f"{ESPN_ATHLETE}/{pid}/stats")
+        except Exception as exc:
+            print(f"  QB {pid}: {exc}", file=sys.stderr)
+            continue
+        seasons = {}
+        for cat in st.get("categories", []):
+            if cat.get("name") not in ("passing", "rushing"):
+                continue
+            labels = cat.get("labels", [])
+            for row in cat.get("statistics", []):
+                season = str((row.get("season") or {}).get("year") or (row.get("season") or {}).get("displayName"))
+                team = row.get("teamSlug") or ""
+                s = seasons.setdefault((season, team), {"season": season, "teamSlug": team, "teamId": str(row.get("teamId") or "")})
+                vals = dict(zip(labels, row.get("stats", [])))
+                def num(k):
+                    try:
+                        return float(str(vals.get(k, "0")).replace(",", ""))
+                    except ValueError:  # ESPN shows "-" for some missing values
+                        return 0.0
+                if cat["name"] == "passing":
+                    s.update(cmp=int(num("CMP")), att=int(num("ATT")), yds=int(num("YDS")), td=int(num("TD")),
+                             int=int(num("INT")), sacks=int(num("SACK")), rtg=num("RTG"))
+                else:
+                    s.update(car=int(num("CAR")), ryds=int(num("YDS")), rtd=int(num("TD")))
+        cache["players"][pid] = {
+            "name": a.get("displayName", ""),
+            "height": a.get("displayHeight", ""), "weight": a.get("displayWeight", ""),
+            "birthPlace": a.get("displayBirthPlace", ""), "jersey": a.get("displayJersey", ""),
+            "position": (a.get("position") or {}).get("abbreviation", ""),
+            "seasons": sorted(seasons.values(), key=lambda s: (s["season"], s["teamSlug"])),
+            "fetched": today.isoformat(),
+        }
+        time.sleep(0.1)
+
+    # Past seasons' EPA per pass play, one request per season (only seasons our QBs played)
+    if key:
+        needed = sorted({s["season"] for p in cache["players"].values() for s in p["seasons"]
+                         if s["season"].isdigit() and FIRST_EPA_SEASON <= int(s["season"]) < int(year)})
+        for season in needed:
+            if season in cache["epaSeasons"]:
+                continue
+            try:
+                rows = cfbd_get(f"/ppa/players/season?year={season}&position=QB&excludeGarbageTime=true", key)
+                cache["epaSeasons"][season] = {str(r["id"]): round((r.get("averagePPA") or {}).get("pass") or 0, 3)
+                                               for r in rows if (r.get("averagePPA") or {}).get("pass") is not None}
+            except Exception as exc:
+                print(f"  EPA {season}: {exc}", file=sys.stderr)
+            time.sleep(0.3)
+    cache_path.write_text(json.dumps(cache, separators=(",", ":"), sort_keys=True))
+
+    out = {}
+    for pid in wanted:
+        p = cache["players"].get(pid)
+        if not p:
+            continue
+        seasons = []
+        for s in p["seasons"]:
+            row = dict(s)
+            row["epa"] = cache["epaSeasons"].get(s["season"], {}).get(pid)
+            seasons.append(row)
+        out[pid] = {k: p[k] for k in ("name", "height", "weight", "birthPlace", "jersey", "position")}
+        out[pid]["seasons"] = seasons
+    out_path.write_text(json.dumps(out, separators=(",", ":"), sort_keys=True))
+    print(f"Saved careers for {len(out)} quarterbacks ({min(len(due), CAREER_MAX_PER_RUN)} fetched this run)")

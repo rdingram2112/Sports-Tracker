@@ -505,6 +505,11 @@ def main():
                      os.environ.get("CFBD_API_KEY"), QB_CACHE, QB_OUT, cfbd_get, is_garbage_time, match_team, load)
     except Exception as exc:
         print(f"  quarterback stats failed: {exc}", file=sys.stderr)
+    try:
+        cfb_qb.build_careers(first.get("season", {}).get("year"), os.environ.get("CFBD_API_KEY"), QB_OUT,
+                             DIR / "qbcareercache.json", DIR / "qbcareers.json", get_json, cfbd_get, load)
+    except Exception as exc:
+        print(f"  quarterback careers failed: {exc}", file=sys.stderr)
     DIR.mkdir(parents=True, exist_ok=True)
     BOX_CACHE.write_text(json.dumps(box_cache, separators=(",", ":"), sort_keys=True))
     LINE_CACHE.write_text(json.dumps(line_cache, separators=(",", ":"), sort_keys=True))
