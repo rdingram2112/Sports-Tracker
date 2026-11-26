@@ -2885,7 +2885,7 @@ const CFBT_LABELS = {
   oSucc: ["Success", "all plays"], oEarlyS: ["Early", "1st-2nd down"], oLateS: ["Late", "3rd-4th down"], oStdS: ["Std dn", "standard"], oPdS: ["Pass dn", "passing downs"],
   dSucc: ["Success", "allowed"], dEarlyS: ["Early", "allowed"], dLateS: ["Late", "allowed"], dStdS: ["Std dn", "allowed"], dPdS: ["Pass dn", "allowed"],
   oSacks: ["Sack %", "allowed"], oPress: ["Pressure", "allowed"], oHavoc: ["Havoc", "allowed"],
-  o3rd: ["3rd dn %", "offense"], oRz: ["RZ TD %", "offense"], d3rd: ["3rd dn %", "allowed"], dRz: ["RZ TD %", "allowed"],
+  o3rd: ["Off 3rd %", "converted"], oRz: ["Off RZ TD", "TDs per trip"], d3rd: ["Def 3rd %", "allowed"], dRz: ["Def RZ TD", "allowed"],
   dSacks: ["Sack %", "per dropback"], dPress: ["Pressure", "per dropback"], dHavoc: ["Havoc", "per play"],
 };
 const newCfbt = () => ({ group: Object.keys(CFBT_GROUPS).includes(load("st.cfbtGroup", "basic")) ? load("st.cfbtGroup", "basic") : "basic", sort: null, dir: "best", conf: "all" });
