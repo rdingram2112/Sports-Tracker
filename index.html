@@ -3713,7 +3713,7 @@ function renderCfbTeamPage() {
     ...Object.entries(rb).map(([pid, a]) => ["rb", cfbr.data, pid, "RB", a]),
     ...Object.entries(qb).map(([pid, a]) => ["qb", cfbq.data, pid, "QB", a]),
     ...Object.entries(wr).map(([pid, a]) => ["wr", cfbw.data, pid, cfbw.data.players[pid]?.pos || "WR", a]),
-  ].filter(x => x[4].car > 0).sort((x, y) => y[4].car - x[4].car)
+  ].filter(x => x[4].car > 0).sort((x, y) => y[4].ryds - x[4].ryds || y[4].car - x[4].car)
     .map(([kind, src, pid, pos, a]) => `<tr><td>${who(kind, src, pid, pos)}</td><td>${a.car}</td><td class="pts">${num(a.ryds)}</td><td>${(a.ryds / a.car).toFixed(1)}</td><td>${a.rtd}</td>
       <td>${kind === "rb" && a.n >= 10 ? signed(a.epa / a.n, 2) : "—"}</td></tr>`);
   const catchers = [
