@@ -454,6 +454,8 @@ def main():
             get_json(f"{BASE}/scoreboard?groups={FBS}&limit=400&seasontype={w['stype']}&week={w['week']}").get("events", [])
         games = []
         for ev in events:
+            if not ev.get("competitions"):
+                continue  # ESPN occasionally sends an event without its game details
             comp = ev["competitions"][0]
             st = ev["status"]["type"]
             sides = {}
