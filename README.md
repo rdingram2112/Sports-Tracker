@@ -84,7 +84,7 @@ NFL numbers come from nflverse play-by-play, which lists every tackler, sack, hi
 
 - **Field** (live games): a field in both teams' colors showing the line of scrimmage, the first-down line, the ball with the direction of play, and the current drive. Underneath are the down and distance, the drive so far, the last play, and win probability.
 - **Play-by-play**: every drive (newest first) with its result, and every play with the clock and down and distance. Scoring plays show the new score. Drives you open or close stay that way through the 30-second refreshes. Finished games have the same list under **Plays**.
-- **Box score**: team stats side by side plus passing, rushing and receiving for each team. "Show all stats" adds defense, interceptions, kicking and punting. Player names link to their pages.
+- **Box score**: a **win probability** chart (ESPN's win probability after every play, plotted on the game clock with the home team on top, scoring plays as dots you can tap, and the game's biggest swing), team stats side by side (college games add red zone TDs and scores, counted from the drives: trips are drives that ran a play inside the 20), plus passing, rushing and receiving for each team. "Show all stats" adds defense, interceptions, kicking and punting. Player names link to their pages.
 - **Before kickoff**, a **Preview** with the line, records and both teams' stats with ranks.
 
 NFL live scores work the same way.

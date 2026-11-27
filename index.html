@@ -873,6 +873,14 @@ button.ct-opp:hover .full { text-decoration: underline; }
 .pl li.scoring .pl-text { font-weight: 600; }
 .pl .pl-score { font-size: 12px; color: var(--good-fg); font-weight: 700; }
 .gd-preview .cfb-card { box-shadow: none; }
+.wp-wrap { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 6px 4px 0; }
+.wp-svg { width: 100%; max-width: 560px; height: auto; display: block; margin: 0 auto; }
+.wp-line { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; }
+.wp-mid { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; }
+.wp-grid { stroke: var(--line); stroke-width: 1; }
+.wp-lbl { fill: var(--muted); font: 600 12px var(--font-display, sans-serif); }
+.wp-team { fill: var(--fg); font: 700 14px var(--font-display, sans-serif); }
+.wp-sec .pp-note { font-size: 12px; }
 .leaders { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
 .leaders > div { padding: 8px 14px; display: grid; gap: 2px; font-size: 13px; min-width: 0; }
 .leaders > div + div { border-left: 1px solid var(--line); }
@@ -4063,7 +4071,7 @@ function parseCfbBox(json) {
       athletes: (cat.athletes || []).map(a => ({ id: String(a.athlete?.id || ""), name: a.athlete?.displayName || "", short: a.athlete?.shortName || a.athlete?.displayName || "", stats: a.stats || [] })) }]))]));
   const wp = (json.winprobability || []).at(-1)?.homeWinPercentage;
   return { cfb: true, id: String(header.id || ""), state: st.state, detail: st.shortDetail || st.detail || "", start: header.date, sides, teamStats, players,
-    drives: parseDrives(json, sides), winprob: wp == null ? null : wp };
+    drives: parseDrives(json, sides), winprob: wp == null ? null : wp, wpSeries: wpSeries(json) };
 }
 
 // Which of our player pages an ESPN athlete id has, if any
@@ -4096,8 +4104,15 @@ function renderCfbBox(data) {
   }
   // Team stats side by side
   const ta = data.teamStats[away.id] || {}, th = data.teamStats[home.id] || {};
-  const teamRows = CFB_BOX_TEAM.filter(([k]) => ta[k] != null || th[k] != null)
+  let teamRows = CFB_BOX_TEAM.filter(([k]) => ta[k] != null || th[k] != null)
     .map(([k, label]) => `<tr><td>${esc(ta[k] ?? "—")}</td><th scope="row">${label}</th><td>${esc(th[k] ?? "—")}</td></tr>`).join("");
+  // College box scores have no red-zone line, so count it from the drives
+  if (FB === "cfb" && data.drives?.length) {
+    const ra = redZoneFromDrives(data.drives, away.id), rh = redZoneFromDrives(data.drives, home.id);
+    const of = (x, n) => n ? `${x} of ${n}` : "0 of 0";
+    teamRows += `<tr><td>${of(ra.td, ra.trips)}</td><th scope="row">Red zone TDs</th><td>${of(rh.td, rh.trips)}</td></tr>
+      <tr><td>${of(ra.td + ra.fg, ra.trips)}</td><th scope="row">Red zone scores</th><td>${of(rh.td + rh.fg, rh.trips)}</td></tr>`;
+  }
   const teamTable = teamRows ? `<section class="gd-team"><h3>Team stats</h3><div class="box-wrap"><table class="box cfb-tstats">
     <thead><tr><th>${mini(away)}${esc(away.abbr)}</th><th></th><th>${esc(home.abbr)}${mini(home)}</th></tr></thead><tbody>${teamRows}</tbody></table></div></section>` : "";
 
@@ -4120,7 +4135,7 @@ function renderCfbBox(data) {
     }).join("");
     return sections ? `<section class="gd-team"><h3>${mini(t)}${esc(t.name || t.abbr)}</h3>${sections}</section>` : "";
   };
-  body.innerHTML = teamTable + playerTables(away) + playerTables(home);
+  body.innerHTML = wpChart(data) + teamTable + playerTables(away) + playerTables(home);
 }
 
 function loadCfbBox(gameId, quiet) {
@@ -4287,6 +4302,83 @@ document.getElementById("gd-body").addEventListener("toggle", e => {
   if (!box.openDrives) box.openDrives = new Set([...document.querySelectorAll("#gd-body details[data-drive][open]")].map(x => x.dataset.drive));
   dr.open ? box.openDrives.add(dr.dataset.drive) : box.openDrives.delete(dr.dataset.drive);
 }, true);
+
+// ---- Win probability over the game (football box score) ----
+// Each reading is placed on the game clock: four quarters, then overtime periods side by side.
+function wpSeries(json) {
+  const plays = {};
+  for (const dr of [...(json.drives?.previous || []), ...(json.drives?.current ? [json.drives.current] : [])])
+    for (const p of dr.plays || []) plays[String(p.id)] = p;
+  const secs = c => { const m = /^(\d+):(\d+)/.exec(c || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const out = [];
+  for (const w of json.winprobability || []) {
+    const p = plays[String(w.playId)];
+    if (!p || w.homeWinPercentage == null) continue;
+    const per = p.period?.number || 1, left = secs(p.clock?.displayValue);
+    if (left == null) continue;
+    const t = per <= 4 ? (per - 1) * 900 + (900 - left) : 3600 + (per - 5) * 600 + Math.max(0, 600 - left);
+    out.push({ t, per, p: w.homeWinPercentage, scoring: !!p.scoringPlay, team: String(p.team?.id || p.start?.team?.id || ""),
+      text: String(p.text || "").replace(/^\s*\(\d{1,2}:\d{2}\)\s*/, "").trim(), clock: p.clock?.displayValue || "" });
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+function wpChart(data) {
+  const pts = data.wpSeries || [];
+  if (pts.length < 3) return "";
+  const { away, home } = data.sides;
+  const col = t => "#" + String(t.color || "777").replace("#", "");
+  const W = 420, H = 190, L = 40, R = 8, T = 10, B = 22;
+  const maxPer = Math.max(4, ...pts.map(p => p.per));
+  const tEnd = maxPer <= 4 ? 3600 : 3600 + (maxPer - 4) * 600;
+  const X = t => L + (t / tEnd) * (W - L - R);
+  const Y = p => T + (1 - p) * (H - T - B);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.p).toFixed(1)}`).join("");
+  const grid = [];
+  for (let q = 1; q <= maxPer; q++) {
+    const t0 = q <= 4 ? (q - 1) * 900 : 3600 + (q - 5) * 600, t1 = q <= 4 ? q * 900 : t0 + 600;
+    if (q > 1) grid.push(`<line x1="${X(t0)}" y1="${T}" x2="${X(t0)}" y2="${H - B}" class="wp-grid"/>`);
+    grid.push(`<text x="${(X(t0) + X(t1)) / 2}" y="${H - 6}" text-anchor="middle" class="wp-lbl">${q <= 4 ? "Q" + q : maxPer > 5 ? "OT" + (q - 4) : "OT"}</text>`);
+  }
+  const marks = pts.filter(p => p.scoring).map(p => {
+    const t = p.team === home.id ? home : p.team === away.id ? away : null;
+    return `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.p).toFixed(1)}" r="4.5" fill="${t ? col(t) : "var(--fg)"}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(`Q${p.per > 4 ? "OT" : p.per} ${p.clock} · ${p.text}`)}</title></circle>`;
+  }).join("");
+  const last = pts[pts.length - 1];
+  const lead = last.p >= 0.5 ? home : away, leadPct = Math.round((last.p >= 0.5 ? last.p : 1 - last.p) * 100);
+  // the biggest single-play swing
+  let swing = null;
+  for (let i = 1; i < pts.length; i++) { const d = Math.abs(pts[i].p - pts[i - 1].p); if (!swing || d > swing.d) swing = { d, p: pts[i] }; }
+  return `<section class="gd-team wp-sec"><h3>Win probability</h3>
+    <div class="wp-wrap"><svg class="wp-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Win probability over the game">
+      <rect x="${L}" y="${T}" width="${W - L - R}" height="${(H - T - B) / 2}" fill="${col(home)}" fill-opacity="0.07"/>
+      <rect x="${L}" y="${T + (H - T - B) / 2}" width="${W - L - R}" height="${(H - T - B) / 2}" fill="${col(away)}" fill-opacity="0.07"/>
+      ${grid.join("")}
+      <line x1="${L}" y1="${Y(0.5)}" x2="${W - R}" y2="${Y(0.5)}" class="wp-mid"/>
+      <text x="${L - 6}" y="${T + 10}" text-anchor="end" class="wp-team">${esc(home.abbr)}</text>
+      <text x="${L - 6}" y="${H - B - 2}" text-anchor="end" class="wp-team">${esc(away.abbr)}</text>
+      <text x="${L - 6}" y="${Y(0.5) + 4}" text-anchor="end" class="wp-lbl">50%</text>
+      <path d="${path}" class="wp-line"/>
+      ${marks}
+    </svg></div>
+    <p class="pp-note">${data.state === "in" ? "Now" : "Final"}: ${esc(lead.abbr)} ${leadPct}%. Dots are scoring plays (tap one for the play).${swing && swing.d >= 0.1 ? ` Biggest swing: ${Math.round(swing.d * 100)} points, Q${swing.p.per > 4 ? "OT" : swing.p.per} ${esc(swing.p.clock)}: ${esc(swing.p.text.slice(0, 90))}${swing.p.text.length > 90 ? "…" : ""}` : ""} Win probability from ESPN.</p></section>`;
+}
+
+// College red zone from the drives: trips inside the 20, touchdowns and scores (touchdown or field goal) per team
+function redZoneFromDrives(drives, teamId) {
+  let trips = 0, td = 0, fg = 0;
+  for (const dr of drives || []) {
+    if (dr.teamId !== teamId) continue;
+    if (!dr.plays.some(p => p.start.team === teamId && p.start.ytg != null && p.start.ytg <= 20 && p.start.ytg > 0)) continue;
+    trips++;
+    const res = String(dr.result || "").trim().toLowerCase();
+    const scored = dr.plays.filter(p => p.scoring).map(p => p.type.toLowerCase());
+    if (/^(touchdown|td)$/.test(res) || scored.some(t => /^(passing|rushing) touchdown/.test(t))) td++;
+    else if (dr.score && (/^(field goal|fg)$/.test(res) || scored.some(t => /^field goal good/.test(t)))) fg++;
+  }
+  return { trips, td, fg };
+}
 
 function openCfbBox(gameId) {
   box.gameId = gameId;
