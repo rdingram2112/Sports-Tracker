@@ -372,6 +372,7 @@ CAREER_KINDS = {
     "qb": {"file": "qbs.json", "touch": ("att",), "min": 40, "cats": ("passing", "rushing"), "epa": 0},
     "rb": {"file": "rbs.json", "touch": ("car", "rec"), "min": 25, "cats": ("rushing", "receiving"), "epa": 1},
     "wr": {"file": "wrs.json", "touch": ("tgt",), "min": 15, "cats": ("rushing", "receiving"), "epa": 2},
+    "dl": {"file": "dls.json", "touch": ("tkl", "press"), "min": 8, "cats": ("defensive",), "epa": None},
 }
 
 
@@ -415,7 +416,13 @@ def build_careers(kind, past, extra_bio, year):
                     except ValueError:
                         return 0
                 s["gp"] = max(s.get("gp", 0), n("GP"))
-                if cat["name"] == "passing":
+                if cat["name"] == "defensive":
+                    try:
+                        sk = float(str(vals.get("SACK", "0")).replace(",", ""))
+                    except ValueError:
+                        sk = 0.0
+                    s.update(tkl=n("TOT"), solo=n("SOLO"), sacks=sk, ff=n("FF"), pd=n("PD"), int=n("INT"), stf=n("STF"))
+                elif cat["name"] == "passing":
                     s.update(cmp=n("CMP"), att=n("ATT"), yds=n("YDS"), td=n("TD"), int=n("INT"), sacks=n("SACK"))
                 elif cat["name"] == "rushing":
                     s.update(car=n("CAR"), ryds=n("YDS"), rtd=n("TD"), rlng=n("LNG"))
@@ -439,7 +446,7 @@ def build_careers(kind, past, extra_bio, year):
             continue
         out[pid] = {k: p.get(k) for k in ("name", "height", "weight", "birthPlace", "jersey", "position",
                                           "college", "draft", "age", "experience")}
-        out[pid]["seasons"] = [dict(s, epa=(past.get(s["season"], {}).get(pid) or [None] * 3)[cfg["epa"]])
+        out[pid]["seasons"] = [dict(s, epa=None if cfg["epa"] is None else (past.get(s["season"], {}).get(pid) or [None] * 3)[cfg["epa"]])
                                for s in p["seasons"] if s["season"] != str(year)] + \
                               [dict(s, epa=None) for s in p["seasons"] if s["season"] == str(year)]
         out[pid]["seasons"].sort(key=lambda s: (s["season"], s["teamSlug"]))
@@ -576,8 +583,12 @@ def main():
     for name, d in (("qbs", qbs), ("rbs", rbs), ("wrs", wrs)):
         (DIR / f"{name}.json").write_text(json.dumps(d, separators=(",", ":")))
         print(f"Saved {len(d['rows'])} {name[:-1].upper()}-games for {len(d['players'])} players")
+    import fb_def
+    dls = fb_def.nfl_rows(plays_by_game, ids, meta, teams_by_abbr, yard_success, flag, num)
+    (DIR / "dls.json").write_text(json.dumps(dls, separators=(",", ":")))
+    print(f"Saved {len(dls['rows'])} DL-games for {len(dls['players'])} DL and edge rushers")
     past = past_epa(ids, DIR / "pastepa.json", year)
-    for kind in ("qb", "rb", "wr"):
+    for kind in ("qb", "rb", "wr", "dl"):
         try:
             build_careers(kind, past, None, year)
         except Exception as exc:

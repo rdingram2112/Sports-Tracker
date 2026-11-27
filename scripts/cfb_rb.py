@@ -276,6 +276,8 @@ CAREER_KINDS = {
     # touches counted toward a page, CFBD positions and PPA field for past seasons' EPA, label
     "rb": {"touch": ("car", "rec"), "min": MIN_TOUCHES_FOR_PAGE, "positions": ("RB",), "ppa": "rush", "label": "running backs"},
     "wr": {"touch": ("tgt",), "min": 20, "positions": ("WR", "TE"), "ppa": "pass", "label": "receivers"},
+    "dl": {"touch": ("tkl", "press"), "min": 10, "positions": (), "ppa": None, "label": "defensive linemen and edge rushers",
+           "cats": ("defensive",)},
 }
 
 
@@ -302,7 +304,7 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
             continue
         seasons = {}
         for cat in st.get("categories", []):
-            if cat.get("name") not in ("rushing", "receiving"):
+            if cat.get("name") not in cfg.get("cats", ("rushing", "receiving")):
                 continue
             labels = cat.get("labels", [])
             for row in cat.get("statistics", []):
@@ -316,7 +318,13 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
                         return int(float(str(vals.get(k, "0")).replace(",", "")))
                     except ValueError:
                         return 0
-                if cat["name"] == "rushing":
+                if cat["name"] == "defensive":
+                    try:
+                        sk = float(str(vals.get("SACK", "0")).replace(",", ""))
+                    except ValueError:
+                        sk = 0.0
+                    s.update(tkl=num("TOT"), solo=num("SOLO"), sacks=sk, ff=num("FF"), pd=num("PD"), int=num("INT"))
+                elif cat["name"] == "rushing":
                     s.update(car=num("CAR"), ryds=num("YDS"), rtd=num("TD"), rlng=num("LNG"))
                 else:
                     s.update(rec=num("REC"), recYds=num("YDS"), recTd=num("TD"))
@@ -328,7 +336,7 @@ def build_careers(year, key, rbs_path, cache_path, out_path, get_json, cfbd_get,
             "fetched": today.isoformat(),
         }
         time.sleep(0.1)
-    if key:
+    if key and cfg["ppa"]:
         needed = sorted({s["season"] for p in cache["players"].values() for s in p["seasons"]
                          if s["season"].isdigit() and FIRST_EPA_SEASON <= int(s["season"]) < int(year)})
         for season in needed:

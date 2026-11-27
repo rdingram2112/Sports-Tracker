@@ -64,6 +64,18 @@ Pick **NFL** in the sport menu. It has the same views as college football (the s
 
 `scripts/fetch_nfl.py` builds it all, and the daily GitHub Action runs it. Schedule, scores, records, yards, lines before kickoff, bios and career lines come from ESPN. Play-by-play comes from [nflverse](https://github.com/nflverse): EPA, win probability, air yards and expected completion % for every snap, plus closing lines for finished games and the IDs that link nflverse players to ESPN (for photos). Box-score totals count every play and match ESPN's official numbers. EPA and rate stats leave out garbage time (the offense's win probability under 5% or over 95%). Success uses the college yardage rule (50% of the yards to go on 1st down, 70% on 2nd, 100% on 3rd/4th). Past seasons' EPA for career tables is computed once from each season's nflverse play-by-play since 2016 (`data/nfl/pastepa.json`).
 
+## Defense (college and NFL)
+
+On **Players**, switch **Offense | Defense**. Defense starts with **DL & edge rushers**: defensive linemen (DE, DT, NT) plus linebackers who mostly rush the passer (at least 0.8 pressures per game, and pressures at least 30% of their tackles), tagged EDGE. That's how T.J. Watt, Micah Parsons and Myles Garrett show up even though they're listed as linebackers. Three stat sets:
+
+- **Pass rush**: sacks (half sacks count 0.5), pressures (sacks plus QB hits that weren't sacks in the NFL; sacks plus QB hurries in college), pressures per game, hits or hurries, and sack % (the share of pressures that became sacks)
+- **Run defense**: run tackles, stops (tackles that held the offense to an unsuccessful play, using the same yardage rule as success rate), stop % (stops per run tackle), and depth (the yards the runner had gained at the tackle; lower is better)
+- **Overall**: tackles, solo tackles, TFL, passes defensed, forced fumbles
+
+Tap a player for his page: bio, this season's box scores (TKL, SACK, TFL, PRESS, STOP, PD) and career by season with games played. Team pages also get a **Defensive line** table.
+
+NFL numbers come from nflverse play-by-play, which lists every tackler, sack, hit, TFL, forced fumble and breakup (`scripts/fb_def.py`, `data/nfl/dls.json`). Tackles there count scrimmage plays only, so they run a little under official totals, which include special teams. College box-score numbers (tackles, sacks, TFL, breakups, hurries, interceptions) come from CollegeFootballData; stops and forced fumbles come from the play text, which names the tacklers (about 98% of tackles are matched to a player). College hurries depend on each stat crew, so pressures there are less consistent than the NFL's. Neither league has snap counts per pass rush, so these are totals and per-game numbers, not per-snap rates. Weeks are cached in `data/cfb/defgames.json`.
+
 ## College football
 
 **Team stats** (`#cfbteams`): every FBS team ranked nationally, switching between Points & yards (PTS/G, OPP/G, YDS/G, OPP YDS), EPA offense and EPA defense (per play, per dropback, per rush). Sort by any column and filter to one conference. "Stats from" (season, last 3, last 5 or any number of games, and conference games only) is shared with Matchups.

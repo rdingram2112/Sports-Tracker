@@ -628,6 +628,19 @@ def main():
         import traceback
         traceback.print_exc()
         print(f"  receiver stats failed: {exc}", file=sys.stderr)
+
+    # Defensive linemen and edge rushers
+    import fb_def
+    try:
+        fb_def.cfb_build(first.get("season", {}).get("year"), out_weeks, games_by_id, teams, results_meta,
+                         os.environ.get("CFBD_API_KEY"), DIR / "rbgames.json", DIR / "defgames.json", DIR / "dls.json",
+                         cfbd_get, match_team, load)
+        cfb_rb.build_careers(first.get("season", {}).get("year"), os.environ.get("CFBD_API_KEY"), DIR / "dls.json",
+                             DIR / "dlcareercache.json", DIR / "dlcareers.json", get_json, cfbd_get, load, kind="dl")
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        print(f"  defensive stats failed: {exc}", file=sys.stderr)
     for r in results:
         gid, me, opp = r[0], r[3], r[4]
         t3 = third_cache.get(gid) or {}
