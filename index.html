@@ -4789,13 +4789,21 @@ const viewFromHash = () => {
   if (q) { state.cqKind = q[1]; state.cfbqbId = q[2]; return "cfbqb"; }
   const t = /^cfbteam-(\d+)$/.exec(h);
   if (t) { state.cfbTeamId = t[1]; return "cfbteam"; }
+  if (!h) return startView();
   return VIEWS.includes(h) && !["player", "cfbqb", "cfbteam"].includes(h) ? h : "stats";
 };
+// Opening the app (no page in the address) lands on live scores for the sport used last.
+function startView() {
+  const sport = load("st.lastSport", "nba");
+  if (sport === "cfb" || sport === "nfl") { switchLeague(sport); return "cfblive"; }
+  return "live";
+}
+// Picking a sport opens its live scores.
 document.getElementById("sport").addEventListener("change", e => {
   const v = e.target.value;
-  if (v === "nba") { setView(state.lastNbaView || "stats"); return; }
+  if (v === "nba") { setView("live"); return; }
   switchLeague(v);
-  setView(state.lastFbView?.[v] || "cfbteams");
+  setView("cfblive");
 });
 function setView(v) {
   const prev = state.view;
@@ -4805,7 +4813,8 @@ function setView(v) {
   if (state.view === "player" && !state.playerId) state.view = "players";
   if (state.view === "cfbqb" && !state.cfbqbId) state.view = "cfbplayers";
   if (state.view === "cfbteam" && !state.cfbTeamId) state.view = "cfbteams";
-  let hash = state.view === "stats" ? "" : state.view === "player" ? "#player-" + state.playerId
+  save("st.lastSport", sportOf(state.view));
+  let hash = state.view === "stats" ? "#stats" : state.view === "player" ? "#player-" + state.playerId
     : state.view === "cfbqb" ? `#cfb${state.cqKind || "qb"}-` + state.cfbqbId
     : state.view === "cfbteam" ? "#cfbteam-" + state.cfbTeamId : "#" + state.view;
   if (isFbView(state.view) && FB === "nfl") hash = hash.replace(/^#cfb/, "#nfl");
