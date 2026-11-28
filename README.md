@@ -1,6 +1,6 @@
 # Sports Tracker
 
-Pick the sport with the menu at the top right: **NBA**, **College Football** or **NFL**.
+Pick the sport with the menu at the top right: **NBA**, **College Basketball**, **College Football** or **NFL**.
 
 ## NBA trailing stats
 
@@ -63,6 +63,20 @@ Pick **NFL** in the sport menu. It has the same views as college football (the s
 "Stats from" works the same way, with **Division games only** in place of conference games.
 
 `scripts/fetch_nfl.py` builds it all, and the daily GitHub Action runs it. Schedule, scores, records, yards, lines before kickoff, bios and career lines come from ESPN. Play-by-play comes from [nflverse](https://github.com/nflverse): EPA, win probability, air yards and expected completion % for every snap, plus closing lines for finished games and the IDs that link nflverse players to ESPN (for photos). Box-score totals count every play and match ESPN's official numbers. EPA and rate stats leave out garbage time (the offense's win probability under 5% or over 95%). Success uses the college yardage rule (50% of the yards to go on 1st down, 70% on 2nd, 100% on 3rd/4th). Past seasons' EPA for career tables is computed once from each season's nflverse play-by-play since 2016 (`data/nfl/pastepa.json`).
+
+## College basketball
+
+Pick **College Basketball** in the sport menu. It has the same views as the NBA, for men's Division I (`#cbbstats`, `#cbbmatchups`, `#cbbplayers`, `#cbblive`, `#cbbplayer-<id>`):
+
+- **Team stats**: every Division I team's trailing stats over the last X games, ranked among all Division I teams (games against non-Division I opponents count toward a team's numbers, but those opponents aren't ranked). Green is top 25, red bottom 25. AP rankings show beside team names.
+- **Matchups**: the next week of games with records, lines and both teams' stats.
+- **Players**: the same stats, periods and position percentiles as the NBA.
+- **Player pages**: bio (position, class, hometown), college career with percentiles among players at the same position each season, and a shot chart compared with every Division I shot this season.
+- **Live scores** with box scores.
+
+A **Show** menu narrows Team stats, Matchups, Players and Live scores to the Top 25, all of Division I, or one conference.
+
+`python3 scripts/fetch_nba.py ncaab` builds it (the daily GitHub Action runs it) into `data/ncaab/`. The files match the NBA's, except player pages: each team has one file with its players' bios and careers (`data/ncaab/teams/ABBR.json`), and shots are stored by team and month (`data/ncaab/shots/ABBR/YYYY-MM.json`), so a player page only downloads its own team's data. League-wide season stats cover the last five seasons.
 
 ## Defense (college and NFL)
 

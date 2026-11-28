@@ -16,7 +16,13 @@ For player pages it also keeps:
   data/nba/careers.json        each current player's seasons with position percentiles
 
 Usage:
-    python3 scripts/fetch_nba.py
+    python3 scripts/fetch_nba.py           # NBA, into data/nba/
+    python3 scripts/fetch_nba.py ncaab     # men's college basketball (Division I), into data/ncaab/
+
+College basketball uses the same files with a few differences: every Division I game (regular season and
+postseason), teams carry their conference, a Division I flag and AP ranking, league-wide seasons start four
+years back (enough for any current player's career), and player-page data is split by team so a page only
+loads its own team's file: data/ncaab/teams/ABBR.json (bios and careers) and data/ncaab/shots/ABBR/YYYY-MM.json.
 """
 import json
 import sys
@@ -46,6 +52,35 @@ REGULAR_SEASON = 2
 SCHEDULE_DAYS = 7
 REQUIRED_FIELDS = ("pts", "stl", "blk")
 EASTERN = ZoneInfo("America/New_York")
+
+LEAGUE = "nba"
+SB_QUERY = ""                 # extra scoreboard parameters
+SEASON_TYPES = {REGULAR_SEASON}
+TEAM_FILES = False            # college: player-page data split by team
+CONFERENCES = {}              # college: Division I conferences {id: {name, short}}
+
+
+def configure(league):
+    """Point the script at another league (only "ncaab" so far)."""
+    global LEAGUE, BASE, COMMON, OUT, SCHEDULE_OUT, PLAYERS_OUT, SHOTS_DIR, SEASONS_DIR, BIOS_OUT, CAREERS_OUT
+    global SB_QUERY, SEASON_TYPES, TEAM_FILES, BIO_MAX_PER_RUN
+    if league != "ncaab":
+        return
+    LEAGUE = league
+    BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball"
+    COMMON = "https://site.api.espn.com/apis/common/v3/sports/basketball/mens-college-basketball"
+    root = Path(__file__).resolve().parent.parent / "data" / "ncaab"
+    OUT, SCHEDULE_OUT, PLAYERS_OUT = root / "games.json", root / "schedule.json", root / "players.json"
+    SHOTS_DIR, SEASONS_DIR = root / "shots", root / "seasons"
+    BIOS_OUT, CAREERS_OUT = root / "bios.json", root / "careers.json"
+    SB_QUERY = "&groups=50&limit=400"   # every Division I game, not just ESPN's featured ones
+    SEASON_TYPES = {2, 3}               # include the postseason (conference tournaments, March Madness)
+    TEAM_FILES = True
+    BIO_MAX_PER_RUN = 10000
+
+
+def team_dir(abbr):
+    return "".join(ch for ch in abbr if ch.isalnum() or ch in "-_") or "X"
 
 
 def get_json(url, retries=3):
@@ -97,9 +132,16 @@ def main():
     have_players = {r[0] for r in player_rows}
 
     shots_by_month = load_shots()
-    have_shots = {r[0] for rows in shots_by_month.values() for r in rows}
+    if TEAM_FILES:
+        have_shots = set(shots_by_month.pop("__games__"))
+    else:
+        have_shots = {r[0] for rows in shots_by_month.values() for r in rows}
 
-    league = get_json(f"{BASE}/scoreboard")["leagues"][0]
+    if LEAGUE == "ncaab":
+        for c in get_json(f"{BASE}/scoreboard/conferences").get("conferences", []):
+            if str(c.get("parentGroupId")) == "50":
+                CONFERENCES[str(c["groupId"])] = {"name": c.get("name"), "short": c.get("shortName")}
+    league = get_json(f"{BASE}/scoreboard" + ("?groups=50" if LEAGUE == "ncaab" else ""))["leagues"][0]
     season = league["season"]
     today = datetime.now(timezone.utc).date()
     days = sorted({c[:10] for c in league.get("calendar", [])})
@@ -112,10 +154,17 @@ def main():
 
     new = 0
     for day in sorted(set(days)):
-        sb = get_json(f"{BASE}/scoreboard?dates={day.replace('-', '')}")
+        sb = get_json(f"{BASE}/scoreboard?dates={day.replace('-', '')}{SB_QUERY}")
         for ev in sb.get("events", []):
-            if ev["season"]["type"] != REGULAR_SEASON:
+            if ev["season"]["type"] not in SEASON_TYPES:
                 continue
+            for c in ev["competitions"][0]["competitors"]:  # conference, kept up to date for every team seen
+                t = c["team"]
+                if t.get("abbreviation") in teams and LEAGUE == "ncaab":
+                    teams[t["abbreviation"]]["conf"] = str(t.get("conferenceId") or "")
+                    teams[t["abbreviation"]]["d1"] = str(t.get("conferenceId") or "") in CONFERENCES
+                    rk = (c.get("curatedRank") or {}).get("current")
+                    teams[t["abbreviation"]]["rank"] = rk if rk and rk <= 25 else None  # latest AP ranking
             if ev["status"]["type"]["name"] != "STATUS_FINAL":
                 continue
             need_team = ev["id"] not in have
@@ -133,7 +182,13 @@ def main():
                 have_players.add(ev["id"])
             if need_shots:
                 month = datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone(EASTERN).strftime("%Y-%m")
-                shots_by_month.setdefault(month, []).extend(parse_shots(ev["id"], summary))
+                if TEAM_FILES:
+                    abbr_of = {str(t["team"]["id"]): t["team"]["abbreviation"] for t in box}
+                    for tid, row in parse_shots(ev["id"], summary, with_team=True):
+                        if tid in abbr_of:
+                            shots_by_month.setdefault((abbr_of[tid], month), []).append(row)
+                else:
+                    shots_by_month.setdefault(month, []).extend(parse_shots(ev["id"], summary))
                 have_shots.add(ev["id"])
             if not need_team:
                 time.sleep(0.2)
@@ -145,6 +200,7 @@ def main():
             }
             for row in rows:
                 row["pts"] = scores[row["team"]]
+            comp_teams = {c["team"]["abbreviation"]: c["team"] for c in ev["competitions"][0]["competitors"]}
             for t in box:
                 info = t["team"]
                 teams[info["abbreviation"]] = {
@@ -152,6 +208,11 @@ def main():
                     "short": info.get("shortDisplayName", info["displayName"]),
                     "logo": info.get("logo", ""),
                 }
+                if LEAGUE == "ncaab":
+                    conf = str((comp_teams.get(info["abbreviation"]) or {}).get("conferenceId") or "")
+                    teams[info["abbreviation"]].update(
+                        id=str(info.get("id", "")), conf=conf, d1=conf in CONFERENCES,
+                        short=info.get("location") or info.get("shortDisplayName", info["displayName"]))
             for i, row in enumerate(rows):
                 row["opp"] = rows[1 - i]["team"]
                 row["home"] = box[i].get("homeAway") == "home"
@@ -169,6 +230,8 @@ def main():
         "teams": dict(sorted(teams.items())),
         "games": games,
     }
+    if LEAGUE == "ncaab":
+        out["conferences"] = CONFERENCES
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, separators=(",", ":")))
     print(f"Added {new} games; {len(games) // 2} total in {OUT}")
@@ -182,7 +245,10 @@ def main():
     )
     print(f"Saved {len(player_rows)} player game lines for {len(players)} players in {PLAYERS_OUT}")
 
-    write_shots(shots_by_month)
+    if TEAM_FILES:
+        write_team_shots(shots_by_month, have_shots)
+    else:
+        write_shots(shots_by_month)
     write_schedule(season["displayName"])
 
     season_year = int(season["year"])
@@ -192,6 +258,9 @@ def main():
 
 
 def load_shots():
+    if TEAM_FILES:  # college: only new shots are kept in memory; the index says which games are done
+        ix = SHOTS_DIR / "games.json"
+        return {"__games__": json.loads(ix.read_text()) if ix.exists() else []}
     months = {}
     for f in sorted(SHOTS_DIR.glob("*.json")) if SHOTS_DIR.exists() else []:
         if f.name == "index.json":
@@ -202,7 +271,7 @@ def load_shots():
     return months
 
 
-def parse_shots(game_id, summary):
+def parse_shots(game_id, summary, with_team=False):
     """[gameId, playerId, x, y, made, pts] for every field goal attempt with a court location.
 
     ESPN puts the hoop at x=25, y=0, in feet; free throws are left out.
@@ -216,9 +285,64 @@ def parse_shots(game_id, summary):
         parts = play.get("participants") or []
         if x is None or y is None or not parts or not (-2 <= x <= 52 and -6 <= y <= 47):
             continue
-        rows.append([game_id, str(parts[0]["athlete"]["id"]), round(x, 1), round(y, 1),
-                     1 if play.get("scoringPlay") else 0, play["pointsAttempted"]])
+        row = [game_id, str(parts[0]["athlete"]["id"]), round(x, 1), round(y, 1),
+               1 if play.get("scoringPlay") else 0, play["pointsAttempted"]]
+        rows.append((str((play.get("team") or {}).get("id", "")), row) if with_team else row)
     return rows
+
+
+SIDE_ANGLE = 25            # same zones as the page (index.html shotZone)
+COLLEGE_CORNER_Y = 4.7     # where the college corner three meets the arc, feet from the hoop
+
+
+def shot_zone(x, y, pts):
+    import math
+    dx = x - 25
+    angle = math.degrees(math.atan2(dx, y))
+    side = "L" if angle < -SIDE_ANGLE else "R" if angle > SIDE_ANGLE else "C"
+    if pts == 3:
+        if y <= COLLEGE_CORNER_Y and abs(dx) >= 20:
+            return "c3L" if dx < 0 else "c3R"
+        return "atb" + side
+    if math.hypot(dx, y) <= 4:
+        return "ra"
+    if abs(dx) <= 8 and y <= 13.75:
+        return "paint"
+    return "mid" + side
+
+
+def write_team_shots(new_shots, have_games):
+    """College: append each team's new shots to shots/ABBR/YYYY-MM.json (a month's file only changes that month)."""
+    SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    ix_path = SHOTS_DIR / "index.json"
+    index = json.loads(ix_path.read_text()) if ix_path.exists() else {"teams": {}}
+    if "league" not in index:  # Division I made/attempted by zone, for the shot chart's comparison
+        index["league"] = {}
+        for f in SHOTS_DIR.glob("*/*.json"):
+            for r in json.loads(f.read_text())["rows"]:
+                z = index["league"].setdefault(shot_zone(r[2], r[3], r[5]), [0, 0])
+                z[0] += 1
+                z[1] += r[4]
+    league = index["league"]
+    for (abbr, month), rows in new_shots.items():
+        folder = SHOTS_DIR / team_dir(abbr)
+        folder.mkdir(exist_ok=True)
+        path = folder / f"{month}.json"
+        old = json.loads(path.read_text())["rows"] if path.exists() else []
+        seen = {r[0] for r in old}
+        fresh = [r for r in rows if r[0] not in seen]
+        for r in fresh:
+            z = league.setdefault(shot_zone(r[2], r[3], r[5]), [0, 0])
+            z[0] += 1
+            z[1] += r[4]
+        rows = old + fresh
+        path.write_text(json.dumps({"cols": SHOT_COLS, "rows": rows}, separators=(",", ":")))
+        months = set(index["teams"].get(abbr, [])) | {month}
+        index["teams"][abbr] = sorted(months)
+    index["teams"] = dict(sorted(index["teams"].items()))
+    ix_path.write_text(json.dumps(index, separators=(",", ":")))
+    (SHOTS_DIR / "games.json").write_text(json.dumps(sorted(have_games)))
+    print(f"Saved {sum(len(r) for r in new_shots.values())} new shots for {len({k[0] for k in new_shots})} teams")
 
 
 def write_shots(shots_by_month):
@@ -233,14 +357,27 @@ def write_shots(shots_by_month):
     print(f"Saved {sum(len(r) for r in shots_by_month.values())} shots in {SHOTS_DIR}")
 
 
+def first_season(current_year):
+    return current_year - 4 if LEAGUE == "ncaab" else FIRST_SEASON
+
+
 def write_seasons(current_year):
     """League-wide player totals per season. Past seasons never change, so they're fetched once."""
     SEASONS_DIR.mkdir(parents=True, exist_ok=True)
-    for year in range(FIRST_SEASON, current_year + 1):
+    for year in range(first_season(current_year), current_year + 1):
         path = SEASONS_DIR / f"{year}.json"
         if path.exists() and year != current_year:
             continue
-        data = get_json(f"{COMMON}/statistics/byathlete?isqualified=false&limit=1000&season={year}&seasontype=2")
+        try:
+            data = get_json(f"{COMMON}/statistics/byathlete?isqualified=false&limit=1000&season={year}&seasontype=2")
+            pages = (data.get("pagination") or {}).get("pages") or 1
+            for page in range(2, pages + 1):  # college has ~10,000 players
+                more = get_json(f"{COMMON}/statistics/byathlete?isqualified=false&limit=1000&season={year}&seasontype=2&page={page}")
+                data["athletes"] = data.get("athletes", []) + more.get("athletes", [])
+                time.sleep(0.2)
+        except Exception as exc:  # ESPN times out now and then; this season is tried again next run
+            print(f"  season {year}: {exc}", file=sys.stderr)
+            continue
         cats = {c["name"]: c.get("names", []) for c in data.get("categories", [])}
         rows = []
         for entry in data.get("athletes", []):
@@ -299,6 +436,7 @@ def write_bios(players):
             "debut": a.get("debutYear"),
             "jersey": a.get("displayJersey", ""),
             "position": (a.get("position") or {}).get("displayName", ""),
+            "class": (a.get("experience") or {}).get("displayValue", "") if LEAGUE == "ncaab" else "",
             "fetched": today.isoformat(),
         }
         time.sleep(0.15)
@@ -331,7 +469,7 @@ def write_careers(players, current_year):
     """Each current player's seasons, with percentiles among players at the same position that season."""
     wanted = set(players)
     careers = {pid: [] for pid in wanted}
-    for year in range(FIRST_SEASON, current_year + 1):
+    for year in range(first_season(current_year), current_year + 1):
         path = SEASONS_DIR / f"{year}.json"
         if not path.exists():
             continue
@@ -376,10 +514,26 @@ def write_careers(players, current_year):
                                         "fgm", "fga", "tpm", "tpa", "ftm", "fta")],
                 "pct": pct,
             })
-    CAREERS_OUT.write_text(json.dumps({
-        "tot": ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"],
-        "players": {k: v for k, v in sorted(careers.items()) if v},
-    }, separators=(",", ":")))
+    tot_cols = ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "tpm", "tpa", "ftm", "fta"]
+    if TEAM_FILES:  # college: one file per team with its players' bios and careers
+        bios = json.loads(BIOS_OUT.read_text()) if BIOS_OUT.exists() else {}
+        by_team = {}
+        for pid, info in players.items():
+            b = by_team.setdefault(info.get("team", ""), {"tot": tot_cols, "players": {}, "bios": {}})
+            if careers.get(pid):
+                b["players"][pid] = careers[pid]
+            if pid in bios:
+                b["bios"][pid] = {k: v for k, v in bios[pid].items() if k != "fetched"}
+        folder = CAREERS_OUT.parent / "teams"
+        folder.mkdir(parents=True, exist_ok=True)
+        for team, b in by_team.items():
+            path = folder / f"{team_dir(team)}.json"
+            body = json.dumps(b, separators=(",", ":"), sort_keys=True)
+            if not path.exists() or path.read_text() != body:
+                path.write_text(body)
+    else:
+        CAREERS_OUT.write_text(json.dumps({"tot": tot_cols, "players": {k: v for k, v in sorted(careers.items()) if v}},
+                                          separators=(",", ":")))
     print(f"Saved careers for {sum(1 for v in careers.values() if v)} players")
 
 
@@ -432,10 +586,10 @@ def write_schedule(season_name):
     days = []
     for offset in range(SCHEDULE_DAYS):
         day = today + timedelta(days=offset)
-        sb = get_json(f"{BASE}/scoreboard?dates={day.strftime('%Y%m%d')}")
+        sb = get_json(f"{BASE}/scoreboard?dates={day.strftime('%Y%m%d')}{SB_QUERY}")
         matchups = []
         for ev in sb.get("events", []):
-            if ev["season"]["type"] != REGULAR_SEASON:
+            if ev["season"]["type"] not in SEASON_TYPES:
                 continue
             comp = ev["competitions"][0]
             sides = {c["homeAway"]: c["team"]["abbreviation"] for c in comp["competitors"]}
@@ -451,6 +605,10 @@ def write_schedule(season_name):
                 "detail": ev["status"]["type"].get("shortDetail", ""),
                 "line": betting_line(comp),
             })
+            if LEAGUE == "ncaab":
+                rk = {c["homeAway"]: (c.get("curatedRank") or {}).get("current") for c in comp["competitors"]}
+                matchups[-1]["awayRank"] = rk.get("away") if (rk.get("away") or 99) <= 25 else None
+                matchups[-1]["homeRank"] = rk.get("home") if (rk.get("home") or 99) <= 25 else None
         matchups.sort(key=lambda m: (m["start"], m["gameId"]))
         days.append({"date": day.isoformat(), "games": matchups})
         time.sleep(0.2)
@@ -493,4 +651,5 @@ def betting_line(comp):
 
 
 if __name__ == "__main__":
+    configure(sys.argv[1] if len(sys.argv) > 1 else "nba")
     main()

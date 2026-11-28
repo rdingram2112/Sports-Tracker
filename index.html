@@ -600,6 +600,7 @@ tbody tr:hover td { background: var(--head-bg); }
 .qblog .rec { white-space: nowrap; }
 @media (max-width: 380px) { #cq-log .qblog th, #cq-log .qblog td, #cq-career .qblog th, #cq-career .qblog td { padding-inline: 3px; } }
 .gp-in { display: none; }
+.bbrk { margin-right: 3px; font-size: 0.75em; font-weight: 600; color: var(--muted); }
 @media (max-width: 760px) { #cq-career .rtg, #cq-career .gpc { display: none; } #cq-career .gp-in { display: inline; } #cq-career tr.totals .gp-in { display: block; font-size: 11px; font-weight: 400; color: var(--muted); } #view-cfbqb .qblog thead th { white-space: normal; line-height: 1.15; vertical-align: bottom; } #cq-career .pc2 { display: none; } #cq-log .result .sc { display: block; font-size: 12px; } }
 .qblog .rec small { display: block; font-size: 11px; color: var(--muted, inherit); opacity: 0.8; }
 #view-cfbqb .qblog-wrap, #view-cfbteam .qblog-wrap { background: var(--surface); }
@@ -1058,6 +1059,7 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
       <span hidden>Sport</span>
       <select id="sport" aria-label="Sport">
         <option value="nba">NBA</option>
+        <option value="ncaab">College Basketball</option>
         <option value="cfb">College Football</option>
         <option value="nfl">NFL</option>
       </select>
@@ -1069,6 +1071,10 @@ tr.pchart-row > td { background: var(--bg); padding: 0; text-align: left; }
     <h1 id="headline">Team stats over the last 10 games</h1>
     <p class="sub" id="updated">Loading game data…</p>
   </header>
+
+  <div class="controls" id="bb-filterbar" hidden>
+    <label class="cfb-filter" for="bb-filter"><span>Show</span><select id="bb-filter"></select></label>
+  </div>
 
   <div class="controls" id="game-window">
     <span class="label">Window</span>
@@ -1414,14 +1420,67 @@ const state = {
   pmode: "per", pspan: 14, psort: "pts", pdir: "desc", pall: false, pq: "",
   pexpanded: null, pchartStat: null,
 };
+/* Basketball: the NBA and men's college basketball share these views; BB says which league is showing. */
+let BB = "nba";
+const BBLEAGUES = {
+  nba: { name: "NBA", espn: "nba", dir: "nba", pre: "", sbExtra: "", band: 5, seasons: "NBA seasons",
+    cornerX: 220, threeR: 237.5, cornerYFt: 8.95 },
+  ncaab: { name: "College basketball", espn: "mens-college-basketball", dir: "ncaab", pre: "cbb", sbExtra: "&groups=50&limit=400", band: 25,
+    seasons: "College seasons", cornerX: 216.5, threeR: 221.5, cornerYFt: 4.7 },
+};
+const BBL = () => BBLEAGUES[BB];
+const bbHash = rest => BBL().pre + rest;           // "player-1" or "cbbplayer-1"
+const bbStore = {};
+function switchBb(lg) {
+  if (lg === BB || !BBLEAGUES[lg]) return;
+  bbStore[BB] = { data: state.data, schedule: state.schedule, players: state.players, pp, live,
+    expanded: state.expanded, pexpanded: state.pexpanded, day: state.day };
+  BB = lg;
+  const st = bbStore[lg];
+  if (st) {
+    ({ data: state.data, schedule: state.schedule, players: state.players, pp, live } = st);
+    state.expanded = st.expanded; state.pexpanded = st.pexpanded; state.day = st.day;
+  } else {
+    state.data = null; state.schedule = null; state.players = null; pp = newPp(); live = newLive();
+    state.expanded = null; state.pexpanded = null; state.day = null;
+  }
+  state.playersLoading = false; state.playersError = false; state.bbError = false;
+}
+// Games and the schedule for the basketball league that's showing (kept per league once loaded)
+function loadBbData() {
+  if (state.bbLoading === BB) return;
+  const lg = BB, dir = BBL().dir;
+  state.bbLoading = lg;
+  Promise.all([
+    fetch(`data/${dir}/games.json`, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+    fetch(`data/${dir}/schedule.json`, { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null),
+  ])
+    .then(([data, schedule]) => {
+      const target = BB === lg ? state : bbStore[lg];
+      if (target) { target.data = data; target.schedule = schedule; }
+    })
+    .catch(() => { if (BB === lg) state.bbError = true; })
+    .finally(() => { if (state.bbLoading === lg) state.bbLoading = null; render(); });
+}
+// College: Top 25, all of Division I, or one conference (Team stats, Matchups, Players and Live scores)
+state.bbFilter = load("st.cbbFilter", "top25");
+const bbTeamOk = abbr => {
+  if (BB !== "ncaab") return true;
+  const t = state.data?.teams[abbr];
+  const f = state.bbFilter;
+  if (f === "all") return !!t?.d1;
+  if (f === "top25") return !!t?.rank;
+  return t?.conf === f;
+};
 const VIEWS = ["stats", "matchups", "players", "live", "player", "cfb", "cfbteams", "cfbplayers", "cfbqb", "cfbteam", "cfblive"];
 // Views in the menu for each sport. College football has Matchups so far.
 const SPORT_VIEWS = {
   nba: [["stats", "Team stats"], ["matchups", "Matchups"], ["players", "Players"], ["live", "Live scores"]],
   cfb: [["cfbteams", "Team stats"], ["cfb", "Matchups"], ["cfbplayers", "Players"], ["cfblive", "Live scores"]],
   nfl: [["cfbteams", "Team stats"], ["cfb", "Matchups"], ["cfbplayers", "Players"], ["cfblive", "Live scores"]],
+  ncaab: [["stats", "Team stats"], ["matchups", "Matchups"], ["players", "Players"], ["live", "Live scores"]],
 };
-const sportOf = view => view.startsWith("cfb") ? FB : "nba";
+const sportOf = view => view.startsWith("cfb") ? FB : BB;
 const efgOf = t => t.fga ? (t.fgm + 0.5 * t.tpm) / t.fga * 100 : null;
 const pctOf = (num, den) => den ? num / den * 100 : null;
 // Percentage stats come from totals (made, attempted). `volume` is the per-game attempts a
@@ -1460,7 +1519,7 @@ function aggregate(games, n) {
     (byTeam[g.team] ||= []).push(g);
     (byGame[g.gameId] ||= []).push(g);
   }
-  return Object.entries(byTeam).map(([team, list]) => {
+  return Object.entries(byTeam).filter(([team]) => BB !== "ncaab" || state.data.teams[team]?.d1).map(([team, list]) => {
     const slice = n > 0 ? list.slice(-n) : list;
     const t = { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, oreb: 0, tov: 0, pts: 0, stl: 0, blk: 0 };
     let oppPts = 0, poss = 0;
@@ -1523,13 +1582,18 @@ const fmt = (s, v) => {
   if (s.signed) { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(1); }
   return v.toFixed(1);
 };
-const rankClass = (rank, total) => rank <= 5 ? "good" : rank > total - 5 ? "bad" : "";
+const rankClass = (rank, total) => rank <= BBL().band ? "good" : rank > total - BBL().band ? "bad" : "";
 const statCell = (s, r, total) => {
   const rank = r[s.key + "Rank"];
   return `<span class="cell">${fmt(s, r[s.key])}<span class="rank ${rankClass(rank, total)}">(${rank})</span></span>`;
 };
-const logo = (abbr, alt = "") =>
-  `<span class="logo"><img class="logo-light" src="assets/logos/nba/${abbr}.png" alt="${alt}" width="28" height="28"><img class="logo-dark" src="assets/logos/nba/${abbr}-dark.png" alt="${alt}" width="28" height="28"></span>`;
+const logo = (abbr, alt = "", url = "") => {
+  if (BB === "ncaab") {
+    const src = state.data?.teams[abbr]?.logo || url;
+    return src ? `<span class="logo"><img class="logo-light" src="${esc(src)}" alt="${alt}" width="28" height="28" loading="lazy"><img class="logo-dark" src="${esc(src.replace("/500/", "/500-dark/"))}" alt="${alt}" width="28" height="28" loading="lazy"></span>` : `<span class="logo"></span>`;
+  }
+  return `<span class="logo"><img class="logo-light" src="assets/logos/nba/${abbr}.png" alt="${alt}" width="28" height="28"><img class="logo-dark" src="assets/logos/nba/${abbr}-dark.png" alt="${alt}" width="28" height="28"></span>`;
+};
 const teamInfo = abbr => state.data.teams[abbr] || { name: abbr, short: abbr };
 
 /* ---------- dates ---------- */
@@ -1552,8 +1616,9 @@ function dayLabel(iso) {
 function renderStats() {
   document.getElementById("stats-box").dataset.group = state.tgroup;
   document.querySelectorAll(".tgroup button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tgroup === state.tgroup)));
-  const rows = currentRows();
-  const total = rows.length;
+  const all = currentRows();
+  const total = all.length;
+  const rows = all.filter(r => bbTeamOk(r.team));
   const stat = STATS.find(s => s.key === state.sort);
   const dir = state.dir ?? (stat ? "rank" : "asc");
   rows.sort((a, b) => {
@@ -1573,7 +1638,7 @@ function renderStats() {
     const open = state.expanded === r.team;
     const cells = STATS.map(s => `<td data-g="${s.g}" class="${s.groupStart ? "grp" : ""}">${statCell(s, r, total)}</td>`).join("");
     const main = `<tr class="team-row${open ? " open" : ""}" data-team="${r.team}"><td><button type="button" class="team team-btn" aria-expanded="${open}" aria-label="${info.name}: show games">
-        <span class="chev" aria-hidden="true"></span>${logo(r.team)}<span class="abbr">${r.team}</span><span class="name">${info.short || info.name}</span></button></td><td class="gp">${r.gp}</td>${cells}</tr>`;
+        <span class="chev" aria-hidden="true"></span>${logo(r.team)}<span class="abbr">${info.rank && BB === "ncaab" ? `<span class="bbrk">${info.rank}</span>` : ""}${r.team}</span><span class="name">${info.short || info.name}</span></button></td><td class="gp">${r.gp}</td>${cells}</tr>`;
     return open ? main + gameRows(r) : main;
   }).join("");
 }
@@ -1637,8 +1702,11 @@ function renderMatchups() {
   const byTeam = Object.fromEntries(rows.map(r => [r.team, r]));
   const total = rows.length;
   const day = days.find(d => d.date === state.day);
+  const dayGames = BB !== "ncaab" ? day.games : day.games.filter(g =>
+    state.bbFilter === "top25" ? g.awayRank || g.homeRank : bbTeamOk(g.away) || bbTeamOk(g.home));
+  if (!dayGames.length) { cardsEl.innerHTML = `<div class="empty">No ${state.bbFilter === "top25" ? "Top 25 " : ""}games this day${["all", "top25"].includes(state.bbFilter) ? "" : " for this conference"}.</div>`; return; }
 
-  cardsEl.innerHTML = day.games.map(g => {
+  cardsEl.innerHTML = dayGames.map(g => {
     const a = byTeam[g.away], h = byTeam[g.home];
     const ai = teamInfo(g.away), hi = teamInfo(g.home);
     let when;
@@ -1662,9 +1730,9 @@ function renderMatchups() {
     return `<article class="card">
       <div class="card-time"><span>${when}</span><span>${ai.short} at ${hi.short}</span></div>
       <div class="card-teams">
-        <div class="side away">${logo(g.away, ai.name)}<div class="who"><span class="abbr">${g.away}</span><span class="nm">${ai.short || ai.name}</span>${rec(g.awayRecord)}</div></div>
+        <div class="side away">${logo(g.away, ai.name)}<div class="who"><span class="abbr">${g.awayRank ? `<span class="bbrk">${g.awayRank}</span>` : ""}${g.away}</span><span class="nm">${ai.short || ai.name}</span>${rec(g.awayRecord)}</div></div>
         <span class="at">@</span>
-        <div class="side home">${logo(g.home, hi.name)}<div class="who"><span class="abbr">${g.home}</span><span class="nm">${hi.short || hi.name}</span>${rec(g.homeRecord)}</div></div>
+        <div class="side home">${logo(g.home, hi.name)}<div class="who"><span class="abbr">${g.homeRank ? `<span class="bbrk">${g.homeRank}</span>` : ""}${g.home}</span><span class="nm">${hi.short || hi.name}</span>${rec(g.homeRecord)}</div></div>
       </div>
       ${lineStrip(g)}
       ${statRows}${gpRow}
@@ -1676,22 +1744,24 @@ function renderMatchups() {
 function loadPlayers() {
   if (state.players || state.playersLoading) return;
   state.playersLoading = true;
-  fetch("data/nba/players.json", { cache: "no-cache" })
+  const lg = BB;
+  fetch(`data/${BBL().dir}/players.json`, { cache: "no-cache" })
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(p => {
       // Group each player's game lines in date order (the file is already sorted by date).
       const col = Object.fromEntries(p.cols.map((c, i) => [c, i]));
       const byPlayer = {};
       for (const row of p.rows) (byPlayer[row[col.player]] ||= []).push(row);
-      state.players = { info: p.players, byPlayer, col };
+      const value = { info: p.players, byPlayer, col };
+      if (BB === lg) state.players = value; else if (bbStore[lg]) bbStore[lg].players = value;
     })
-    .catch(() => { state.playersError = true; })
-    .finally(() => { state.playersLoading = false; render(); });
+    .catch(() => { if (BB === lg) state.playersError = true; })
+    .finally(() => { if (BB === lg) state.playersLoading = false; render(); });
 }
 
 const initials = name => name.split(/\s+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 const headshot = (id, name) =>
-  `<span class="shot" data-init="${initials(name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${id}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="40" height="40"></span>`;
+  `<span class="shot" data-init="${initials(name)}"><img src="https://a.espncdn.com/combiner/i?img=/i/headshots/${BBL().espn}/players/full/${id}.png&amp;w=96&amp;h=70&amp;scale=crop" alt="" loading="lazy" width="40" height="40"></span>`;
 
 // A game's calendar day in US Eastern time, as YYYY-MM-DD.
 const etDay = iso => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
@@ -1792,13 +1862,14 @@ function renderPlayers() {
 
   if (!state.players) {
     loadPlayers();
-    body.innerHTML = `<tr><td colspan="10" class="ploading">${state.playersError ? "Couldn't load the player data file (data/nba/players.json)." : "Loading players…"}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="ploading">${state.playersError ? `Couldn't load the player data file (data/${BBL().dir}/players.json).` : "Loading players…"}</td></tr>`;
     more.hidden = true;
     return;
   }
 
   const per = state.pmode === "per";
-  const { list, start } = playerLeaders();
+  const { list: leaders, start } = playerLeaders();
+  const list = leaders.filter(r => bbTeamOk(r.team));  // college: Top 25 / Division I / conference
   document.querySelectorAll(".pspan button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.pspan) === state.pspan)));
   const since = start ? `Games since ${new Date(start + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ` : "";
   document.getElementById("p-qual").textContent = since + (per
@@ -1995,9 +2066,10 @@ function niceStep(raw) {
 const shortDay = day => day ? new Date(day + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 
 /* ---------- live scores (straight from ESPN in the browser) ---------- */
-const LIVE_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard";
+const LIVE_URL = () => `https://site.api.espn.com/apis/site/v2/sports/basketball/${BBL().espn}/scoreboard`;
 const LIVE_REFRESH_MS = 30000;
-const live = { day: 0, byDay: {}, loading: false, error: false, updated: null };
+const newLive = () => ({ day: 0, byDay: {}, loading: false, error: false, updated: null });
+let live = newLive();
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 function liveDayKey() {
@@ -2010,6 +2082,8 @@ function parseLive(json) {
     const st = ev.status || comp.status;
     const side = c => ({
       abbr: c.team.abbreviation,
+      logoUrl: c.team.logo || "",
+      rank: c.curatedRank?.current && c.curatedRank.current <= 25 ? c.curatedRank.current : null,
       score: c.score,
       periods: (c.linescores || []).map(l => l.value ?? l.displayValue),
       record: (c.records || []).find(r => r.type === "total" || r.name === "overall")?.summary || c.records?.[0]?.summary || "",
@@ -2039,17 +2113,18 @@ function parseLive(json) {
 function fetchLive() {
   const key = liveDayKey();
   live.loading = true;
-  return fetch(`${LIVE_URL}?dates=${key.replace(/-/g, "")}`, { cache: "no-store" })
+  const L = live;
+  return fetch(`${LIVE_URL()}?dates=${key.replace(/-/g, "")}${BBL().sbExtra}`, { cache: "no-store" })
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(json => { live.byDay[key] = parseLive(json); live.error = false; live.updated = new Date(); })
-    .catch(() => { live.error = true; })
-    .finally(() => { live.loading = false; if (state.view === "live") renderLive(); });
+    .then(json => { L.byDay[key] = parseLive(json); L.error = false; L.updated = new Date(); })
+    .catch(() => { L.error = true; })
+    .finally(() => { L.loading = false; if (state.view === "live") renderLive(); });
 }
 
 function renderLive() {
   const key = liveDayKey();
   document.querySelectorAll("#live-days button").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.lday) === live.day)));
-  const games = live.byDay[key];
+  let games = live.byDay[key];
   const cards = document.getElementById("live-cards");
   const stamp = document.getElementById("live-updated");
 
@@ -2059,12 +2134,18 @@ function renderLive() {
     : live.updated ? `Updated ${live.updated.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Loading…";
 
   if (!games) { cards.innerHTML = `<div class="empty">Loading scores…</div>`; return; }
-  if (!games.length) { cards.innerHTML = `<div class="empty">No NBA games ${live.day === 0 ? "today" : "yesterday"}.</div>`; return; }
+  if (!games.length) { cards.innerHTML = `<div class="empty">No ${BBL().name} games ${live.day === 0 ? "today" : "yesterday"}.</div>`; return; }
+  if (BB === "ncaab") {
+    const shown = games.filter(g => state.bbFilter === "top25" ? g.away.rank || g.home.rank : bbTeamOk(g.away.abbr) || bbTeamOk(g.home.abbr));
+    if (!shown.length) { cards.innerHTML = `<div class="empty">No ${state.bbFilter === "top25" ? "Top 25 " : ""}games ${live.day === 0 ? "today" : "yesterday"}${["all", "top25"].includes(state.bbFilter) ? "" : " for this conference"}.</div>`; return; }
+    games = shown;
+  }
 
   cards.innerHTML = games.map(g => {
     const started = g.state !== "pre";
-    const nper = Math.max(4, g.away.periods.length, g.home.periods.length);
-    const perLabel = i => i < 4 ? String(i + 1) : (nper > 5 ? `OT${i - 3}` : "OT");
+    const base = BB === "ncaab" ? 2 : 4;  // college plays two halves
+    const nper = Math.max(base, g.away.periods.length, g.home.periods.length);
+    const perLabel = i => i < base ? (BB === "ncaab" ? ["1H", "2H"][i] : String(i + 1)) : (nper > base + 1 ? `OT${i - base + 1}` : "OT");
     const awayScore = Number(g.away.score), homeScore = Number(g.home.score);
 
     let state;
@@ -2076,7 +2157,7 @@ function renderLive() {
       : `${esc(teamInfo(g.away.abbr).short || g.away.abbr)} at ${esc(teamInfo(g.home.abbr).short || g.home.abbr)}`;
 
     const row = (t, trailing) => `<tr class="${started && trailing ? "trailing" : ""}">
-        <td><div class="score-team">${logo(t.abbr)}<div><div class="abbr">${esc(t.abbr)}</div><div class="rec">${esc(t.record)}</div></div></div></td>
+        <td><div class="score-team">${logo(t.abbr, "", t.logoUrl)}<div><div class="abbr">${t.rank ? `<span class="rk">${t.rank}</span>` : ""}${esc(t.abbr)}</div><div class="rec">${esc(t.record)}</div></div></div></td>
         ${started ? Array.from({ length: nper }, (_, i) => `<td>${t.periods[i] ?? ""}</td>`).join("") + `<td class="total">${esc(t.score)}</td>` : ""}
       </tr>`;
 
@@ -2106,7 +2187,7 @@ document.getElementById("live-days").addEventListener("click", e => {
 document.getElementById("live-refresh").addEventListener("click", () => { if (!live.loading) fetchLive(); });
 
 /* ---------- box score popup ---------- */
-const SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary";
+const SUMMARY_URL = () => `https://site.api.espn.com/apis/site/v2/sports/basketball/${BBL().espn}/summary`;
 // At a glance: these fit an iPhone screen. "Show all stats" adds the rest.
 const BOX_BASIC = [
   { key: "min", label: "MIN" },
@@ -2215,7 +2296,7 @@ function loadBox(gameId, quiet) {
     document.getElementById("gd-title").textContent = "Loading box score…";
     document.getElementById("gd-body").innerHTML = "";
   }
-  return fetch(`${SUMMARY_URL}?event=${encodeURIComponent(gameId)}`, { cache: "no-store" })
+  return fetch(`${SUMMARY_URL()}?event=${encodeURIComponent(gameId)}`, { cache: "no-store" })
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(json => {
       if (box.gameId !== gameId) return; // closed or switched games meanwhile
@@ -2293,11 +2374,14 @@ document.addEventListener("visibilitychange", () => {
 });
 
 /* ---------- player page ---------- */
-const pp = { careers: null, bios: null, shots: null, loading: false, error: false, shotspan: 0 };
+const newPp = () => ({ careers: null, bios: null, shots: null, loading: false, error: false, shotspan: 0, team: null, league: null });
+let pp = newPp();
 
 function loadPlayerPageData() {
+  if (BB === "ncaab") return loadCollegePlayerData();
   if (pp.loading || (pp.careers && pp.bios && pp.shots)) return;
-  pp.loading = true;
+  const P = pp;
+  P.loading = true;
   const json = url => fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(url); return r.json(); });
   Promise.all([
     json("data/nba/careers.json"),
@@ -2305,17 +2389,40 @@ function loadPlayerPageData() {
     json("data/nba/shots/index.json").then(ix => Promise.all(ix.months.map(m => json(`data/nba/shots/${m}.json`)))),
   ])
     .then(([careers, bios, months]) => {
-      pp.careers = careers;
-      pp.bios = bios;
-      pp.shots = months.flatMap(m => m.rows); // [gameId, player, x, y, made, pts]
+      P.careers = careers;
+      P.bios = bios;
+      P.shots = months.flatMap(m => m.rows); // [gameId, player, x, y, made, pts]
     })
-    .catch(() => { pp.error = true; })
-    .finally(() => { pp.loading = false; if (state.view === "player") render(); });
+    .catch(() => { P.error = true; })
+    .finally(() => { P.loading = false; if (state.view === "player") render(); });
   if (!state.players) loadPlayers();
+}
+// College: each team has one file with its players' bios and careers, plus its own shot files by month.
+const teamFile = abbr => abbr.replace(/[^A-Za-z0-9_-]/g, "") || "X";
+function loadCollegePlayerData() {
+  if (!state.players) { loadPlayers(); return; }
+  const team = state.players.info[state.playerId]?.team;
+  if (!team) { pp.error = true; return; }
+  if (pp.loading || pp.team === team) return;
+  const P = pp;
+  P.loading = true;
+  P.error = false;
+  const json = url => fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(url); return r.json(); });
+  Promise.all([json(`data/ncaab/teams/${teamFile(team)}.json`), json("data/ncaab/shots/index.json")])
+    .then(([tf, ix]) => Promise.all((ix.teams[team] || []).map(m => json(`data/ncaab/shots/${teamFile(team)}/${m}.json`)))
+      .then(months => {
+        P.careers = { tot: tf.tot, players: tf.players };
+        P.bios = tf.bios;
+        P.shots = months.flatMap(m => m.rows);
+        P.league = ix.league || null;
+        P.team = team;
+      }))
+    .catch(() => { P.error = true; })
+    .finally(() => { P.loading = false; if (state.view === "player") render(); });
 }
 
 function openPlayer(id) {
-  if (location.hash !== "#player-" + id) location.hash = "player-" + id; // adds a history entry, so Back works
+  if (location.hash !== "#" + bbHash("player-" + id)) location.hash = bbHash("player-" + id); // adds a history entry, so Back works
   else setView("player");
 }
 
@@ -2354,7 +2461,7 @@ function ageFrom(dob) {
 function renderPlayerPage() {
   const id = state.playerId;
   const head = document.getElementById("pp-head");
-  if (!pp.careers || !pp.bios || !pp.shots) {
+  if (!pp.careers || !pp.bios || !pp.shots || (BB === "ncaab" && pp.team !== state.players?.info?.[id]?.team)) {
     loadPlayerPageData();
     head.innerHTML = `<div class="gd-msg">${pp.error ? "Couldn't load the player data. Try again in a moment." : "Loading player…"}</div>`;
     document.getElementById("c-rows").innerHTML = "";
@@ -2373,15 +2480,15 @@ function renderPlayerPage() {
   const dobText = bio.dob ? new Date(bio.dob + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
   const fact = (label, value) => value ? `<div><dt>${label}</dt><dd>${esc(value)}</dd></div>` : "";
   head.innerHTML = `
-    <div class="pp-photo" data-init="${initials(name)}"><img src="https://a.espncdn.com/i/headshots/nba/players/full/${esc(id)}.png" alt="${esc(name)}" width="168" height="168"></div>
+    <div class="pp-photo" data-init="${initials(name)}"><img src="https://a.espncdn.com/i/headshots/${BBL().espn}/players/full/${esc(id)}.png" alt="${esc(name)}" width="168" height="168"></div>
     <div class="pp-id">
       <div class="pp-team">${team ? logo(team) : ""}<span>${esc(teamInfo(team).name || team)}${bio.position ? ` · ${esc(bio.position)}` : ""}${bio.jersey ? ` · ${esc(bio.jersey)}` : ""}</span></div>
       <dl class="pp-facts">
         ${fact("Age", age != null ? `${age} (born ${dobText})` : "")}
         ${fact("Height / weight", [bio.height, bio.weight].filter(Boolean).join(", "))}
-        ${fact("College", bio.college || (bio.birthPlace ? `None (from ${bio.birthPlace})` : ""))}
-        ${fact("Draft", bio.draft || "Undrafted")}
-        ${fact("NBA seasons", seasons.length ? `${seasons.length} (since ${seasons[0].season})` : "")}
+        ${BB === "nba" ? fact("College", bio.college || (bio.birthPlace ? `None (from ${bio.birthPlace})` : "")) : fact("Class", bio.class)}
+        ${BB === "nba" ? fact("Draft", bio.draft || "Undrafted") : fact("Hometown", bio.birthPlace)}
+        ${fact(BBL().seasons, seasons.length ? `${seasons.length} (since ${seasons[0].season})` : "")}
       </dl>
     </div>`;
   head.querySelector(".pp-photo img").addEventListener("error", e => { e.target.parentNode.classList.add("noimg"); e.target.remove(); });
@@ -2436,13 +2543,14 @@ const ZONES = [
   { key: "atbR", name: "Right wing 3" },
 ];
 const SIDE_ANGLE = 25;      // degrees either side of straight out from the hoop
-const CORNER_Y = 8.95;      // where the corner three line meets the arc, feet from the hoop
+const CORNER_Y = 8.95;      // where the corner three line meets the arc, feet from the hoop (NBA)
+const cornerYFt = () => BBL().cornerYFt;
 function shotZone(x, y, pts) {
   const dx = x - 25;
   const angle = Math.atan2(dx, y) * 180 / Math.PI;
   const side = angle < -SIDE_ANGLE ? "L" : angle > SIDE_ANGLE ? "R" : "C";
   if (pts === 3) {
-    if (y <= CORNER_Y && Math.abs(dx) >= 20) return dx < 0 ? "c3L" : "c3R";
+    if (y <= cornerYFt() && Math.abs(dx) >= 20) return dx < 0 ? "c3L" : "c3R";
     return "atb" + side;
   }
   if (Math.hypot(dx, y) <= 4) return "ra";
@@ -2464,7 +2572,10 @@ function renderShotChart(id) {
   for (const g of games) gameDay[g.gameId] ||= etDay(g.date);
   const start = pp.shotspan ? shiftDay(etDay(games[games.length - 1].date), -(pp.shotspan - 1)) : null;
   const inPeriod = s => !start || gameDay[s[0]] >= start;
-  const league = zoneStats(pp.shots.filter(inPeriod));
+  // College: compare with every Division I shot this season (the page only loads this team's shots)
+  const league = BB === "ncaab" && pp.league
+    ? Object.fromEntries(ZONES.map(o => [o.key, { fga: pp.league[o.key]?.[0] || 0, fgm: pp.league[o.key]?.[1] || 0 }]))
+    : zoneStats(pp.shots.filter(inPeriod));
   const mine = pp.shots.filter(s => s[1] === id && inPeriod(s));
   const z = zoneStats(mine);
   const total = mine.length;
@@ -2486,8 +2597,9 @@ function renderShotChart(id) {
     C: poly([[H.x, H.y], far(-A), far(A)]),
     R: poly([[H.x, H.y], far(A), [1700, 1200], [1700, -200], [H.x, -200]]),
   };
-  const cornerY = (CORNER_Y + 5.25) * 10;
-  const arc = `M30,0 L30,${cornerY} A237.5,237.5 0 0 0 470,${cornerY} L470,0 Z`;
+  const cornerY = (cornerYFt() + 5.25) * 10;
+  const c3L = 250 - BBL().cornerX, c3R = 250 + BBL().cornerX, R3 = BBL().threeR;
+  const arc = `M${c3L},0 L${c3L},${cornerY} A${R3},${R3} 0 0 0 ${c3R},${cornerY} L${c3R},0 Z`;
   const zoneEl = (k, shape) => `<g class="zone z-${bucket(k)}">${shape}</g>`;
   const label = (k, x, y, compact) => {
     const o = z[k], p = pct(o);
@@ -2525,7 +2637,7 @@ function renderShotChart(id) {
       <rect x="170" y="0" width="160" height="190"/>
       <circle cx="250" cy="190" r="60"/>
       <path d="M210,40 V52.5 A40,40 0 0 0 290,52.5 V40"/>
-      <path d="M30,0 L30,${cornerY} A237.5,237.5 0 0 0 470,${cornerY} L470,0"/>
+      <path d="M${c3L},0 L${c3L},${cornerY} A${R3},${R3} 0 0 0 ${c3R},${cornerY} L${c3R},0"/>
       <line x1="220" y1="40" x2="280" y2="40"/>
       <circle cx="250" cy="52.5" r="7.5"/>
       <path d="M190,470 A60,60 0 0 1 310,470"/>
@@ -4704,9 +4816,14 @@ document.getElementById("cfb-conf").addEventListener("change", e => {
 });
 
 /* ---------- shell ---------- */
-const nbaHeader = { eyebrow: "NBA", updated: "" };
 function render() {
-  if (!state.data) return;
+  if (!isFbView(state.view) && !state.data) {
+    loadBbData();
+    document.getElementById("season").textContent = BBL().name;
+    document.getElementById("updated").innerHTML = state.bbError
+      ? `<span class="error">Couldn't load the game data file (data/${BBL().dir}/games.json).</span>` : "Loading game data…";
+    return;
+  }
   const windowText = state.n > 0 ? `the last ${state.n} games` : "the full season";
   const headlines = {
     stats: state.n > 0 ? `Team stats over the last ${state.n} games` : "Team stats for the full season",
@@ -4733,9 +4850,23 @@ function render() {
     viewSel.innerHTML = SPORT_VIEWS[sport].map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
     viewSel.dataset.sport = sport;
   }
-  if (sport === "nba") {
-    document.getElementById("season").textContent = nbaHeader.eyebrow;
-    document.getElementById("updated").textContent = nbaHeader.updated;
+  if (sport === "nba" || sport === "ncaab") {
+    const d = state.data, last = d.games.length ? new Date(d.games[d.games.length - 1].date) : null;
+    document.getElementById("season").textContent = `${BBL().name} · ${d.season} ${BB === "nba" ? "regular season" : "season"}`;
+    document.getElementById("updated").textContent = last
+      ? `${d.games.length / 2} games played. Stats include games through ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`
+      : "No games yet.";
+  }
+  // College basketball: Top 25 / Division I / conference filter
+  const fbar = document.getElementById("bb-filterbar");
+  fbar.hidden = BB !== "ncaab" || !["stats", "matchups", "players", "live"].includes(state.view);
+  if (!fbar.hidden) {
+    const sel = document.getElementById("bb-filter");
+    const confs = Object.entries(state.data.conferences || {}).sort((x, y) => x[1].short.localeCompare(y[1].short));
+    const opts = [["top25", "Top 25"], ["all", "All Division I"], ...confs.map(([id, c]) => [id, c.short])];
+    if (sel.options.length !== opts.length) sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+    if (!opts.some(o => o[0] === state.bbFilter)) state.bbFilter = "top25";
+    sel.value = state.bbFilter;
   }
   document.getElementById("game-window").hidden = noGameWindow;
   document.getElementById("headline").textContent = headlines[state.view];
@@ -4783,6 +4914,8 @@ const viewFromHash = () => {
   let h = location.hash.slice(1);
   if (h.startsWith("nfl")) { switchLeague("nfl"); h = "cfb" + h.slice(3); }
   else if (h.startsWith("cfb")) switchLeague("cfb");
+  else if (h.startsWith("cbb")) { switchBb("ncaab"); h = h.slice(3); }
+  else if (h) switchBb("nba");
   const m = /^player-(\d+)$/.exec(h);
   if (m) { state.playerId = m[1]; return "player"; }
   const q = /^cfb(qb|rb|wr|dl)-(\d+)$/.exec(h);
@@ -4796,12 +4929,13 @@ const viewFromHash = () => {
 function startView() {
   const sport = load("st.lastSport", "nba");
   if (sport === "cfb" || sport === "nfl") { switchLeague(sport); return "cfblive"; }
+  switchBb(sport === "ncaab" ? "ncaab" : "nba");
   return "live";
 }
 // Picking a sport opens its live scores.
 document.getElementById("sport").addEventListener("change", e => {
   const v = e.target.value;
-  if (v === "nba") { setView("live"); return; }
+  if (v === "nba" || v === "ncaab") { switchBb(v); setView("live"); return; }
   switchLeague(v);
   setView("cfblive");
 });
@@ -4818,6 +4952,7 @@ function setView(v) {
     : state.view === "cfbqb" ? `#cfb${state.cqKind || "qb"}-` + state.cfbqbId
     : state.view === "cfbteam" ? "#cfbteam-" + state.cfbTeamId : "#" + state.view;
   if (isFbView(state.view) && FB === "nfl") hash = hash.replace(/^#cfb/, "#nfl");
+  if (!isFbView(state.view) && BB === "ncaab" && hash) hash = "#cbb" + hash.slice(1);
   if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname + location.search);
   if (state.view === "player" && prev !== "player") { state.cameFromApp = prev != null; window.scrollTo(0, 0); }
   if (state.view === "cfbqb") { state.cqFromApp = prev != null && prev !== "cfbqb" ? true : state.cqFromApp; window.scrollTo(0, 0); }
@@ -4826,6 +4961,7 @@ function setView(v) {
 }
 
 document.getElementById("view").addEventListener("change", e => setView(e.target.value));
+document.getElementById("bb-filter").addEventListener("change", e => { state.bbFilter = e.target.value; save("st.cbbFilter", state.bbFilter); render(); });
 window.addEventListener("hashchange", () => { const v = viewFromHash(); setView(v); });
 document.querySelector(".pspan").addEventListener("click", e => {
   const b = e.target.closest("button[data-pspan]");
@@ -4913,23 +5049,7 @@ document.querySelector(".tgroup").addEventListener("click", e => {
 state.view = viewFromHash();
 state.pspan = [7, 14, 30, 0].includes(load("st.pspan", 14)) ? load("st.pspan", 14) : 14;
 
-Promise.all([
-  fetch("data/nba/games.json", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-  fetch("data/nba/schedule.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null),
-])
-  .then(([data, schedule]) => {
-    state.data = data;
-    state.schedule = schedule;
-    const last = data.games.length ? new Date(data.games[data.games.length - 1].date) : null;
-    nbaHeader.eyebrow = `NBA · ${data.season} regular season`;
-    nbaHeader.updated = last
-      ? `${data.games.length / 2} games played. Stats include games through ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.`
-      : "No games yet.";
-    render();
-  })
-  .catch(() => {
-    document.getElementById("updated").innerHTML = `<span class="error">Couldn't load the game data file (data/nba/games.json). Run scripts/fetch_nba.py to create it, then reload.</span>`;
-  });
+render();
 </script>
 </body>
 </html>
